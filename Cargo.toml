@@ -14,8 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 # FFF — fast file search & grep
-fff-search = "0.9.7-nightly.957f222"
-fff-query-parser = "0.9.7-nightly.957f222"
+fff-search = "0"
+fff-query-parser = "0"
 
 # MCP server
 rmcp = { version = "1.7", features = ["server", "transport-io", "macros"] }
