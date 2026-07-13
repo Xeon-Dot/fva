@@ -224,7 +224,7 @@ impl FvaServer {
         let chunks = if let Some(path) = &params.path {
             store.chunks_for_file(path)
         } else if let Some(query) = &params.query {
-            store.search_chunks(query)
+            store.search_chunks(query, limit * 3)
         } else {
             return Ok(CallToolResult::success(vec![Content::text(
                 "Provide 'path' or 'query' parameter.".to_string(),

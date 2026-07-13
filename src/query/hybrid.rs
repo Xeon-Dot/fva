@@ -115,8 +115,8 @@ impl HybridQueryEngine {
             }
         }
 
-        // Stage 1b: Text chunk search
-        for chunk in self.store.search_chunks(query) {
+        // Stage 1b: Text chunk search (up to limit * 3 candidates)
+        for chunk in self.store.search_chunks(query, limit * 3) {
             self.merge_hit(
                 &mut candidates,
                 &chunk,
@@ -132,7 +132,7 @@ impl HybridQueryEngine {
             && let Ok(vector_hits) = self.vectors.search(&query_vec, limit * 5)
         {
             for hit in vector_hits {
-                if let Some(chunk) = self.find_chunk(&hit.chunk_id) {
+                if let Some(chunk) = self.store.chunk_by_id(&hit.chunk_id) {
                     self.merge_hit(
                         &mut candidates,
                         &chunk,
@@ -194,7 +194,7 @@ impl HybridQueryEngine {
             && let Ok(vector_hits) = self.vectors.search(&query_vec, limit)
         {
             for vh in vector_hits {
-                if let Some(chunk) = self.find_chunk(&vh.chunk_id) {
+                if let Some(chunk) = self.store.chunk_by_id(&vh.chunk_id) {
                     let mut hit = HybridHit::from_chunk(&chunk);
                     hit.score = vh.score;
                     hit.vector_score = vh.score;
@@ -209,13 +209,6 @@ impl HybridQueryEngine {
             hits,
             query: query.to_string(),
         }
-    }
-
-    fn find_chunk(&self, chunk_id: &str) -> Option<CodeChunk> {
-        self.store
-            .all_chunks()
-            .into_iter()
-            .find(|c| c.id == chunk_id)
     }
 
     fn merge_hit(

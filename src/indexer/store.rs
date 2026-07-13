@@ -35,6 +35,7 @@ fn remove_symbols_from_index(sym_index: &mut HashMap<String, Vec<String>>, chunk
 pub struct ChunkStore {
     chunks_by_file: RwLock<HashMap<String, Vec<CodeChunk>>>,
     chunks_by_symbol: RwLock<HashMap<String, Vec<String>>>,
+    chunks_by_id: RwLock<HashMap<String, CodeChunk>>,
     file_hashes: RwLock<HashMap<String, String>>,
     file_meta: RwLock<HashMap<String, FileIndexMeta>>,
 }
@@ -50,17 +51,23 @@ impl ChunkStore {
         // Remove old symbol index entries for this file
         if let Some(old_chunks) = self.chunks_by_file.read().get(relative_path) {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             remove_symbols_from_index(&mut sym_index, old_chunks);
+            for old in old_chunks {
+                id_index.remove(&old.id);
+            }
         }
 
-        // Update symbol index
+        // Update symbol index and id index
         {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             for chunk in &chunks {
                 sym_index
                     .entry(chunk.symbol_name.to_lowercase())
                     .or_default()
                     .push(chunk.id.clone());
+                id_index.insert(chunk.id.clone(), chunk.clone());
             }
         }
 
@@ -94,7 +101,11 @@ impl ChunkStore {
     pub fn remove_file(&self, relative_path: &str) {
         if let Some(chunks) = self.chunks_by_file.write().remove(relative_path) {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             remove_symbols_from_index(&mut sym_index, &chunks);
+            for chunk in &chunks {
+                id_index.remove(&chunk.id);
+            }
         }
         self.file_hashes.write().remove(relative_path);
         self.file_meta.write().remove(relative_path);
@@ -126,16 +137,62 @@ impl ChunkStore {
             .cloned()
             .unwrap_or_default();
 
-        let files = self.chunks_by_file.read();
+        let id_index = self.chunks_by_id.read();
         ids.iter()
-            .filter_map(|id| files.values().flatten().find(|c| &c.id == id).cloned())
+            .filter_map(|id| id_index.get(id).cloned())
             .collect()
     }
 
-    pub fn search_chunks(&self, query: &str) -> Vec<CodeChunk> {
-        let query_lower = query.to_lowercase();
-        let files = self.chunks_by_file.read();
+    /// O(1) chunk lookup by ID.
+    pub fn chunk_by_id(&self, chunk_id: &str) -> Option<CodeChunk> {
+        self.chunks_by_id.read().get(chunk_id).cloned()
+    }
 
+    /// Search chunks by text match with a limit.
+    /// Uses the symbol index first for faster matching where possible,
+    /// then falls back to content scan for remaining results.
+    pub fn search_chunks(&self, query: &str, limit: usize) -> Vec<CodeChunk> {
+        let query_lower = query.to_lowercase();
+        if limit == 0 {
+            return vec![];
+        }
+
+        let id_index = self.chunks_by_id.read();
+
+        // Phase 1: check symbol index first (fast path)
+        if let Some(symbol_ids) = self.chunks_by_symbol.read().get(&query_lower) {
+            let mut results: Vec<CodeChunk> = symbol_ids
+                .iter()
+                .filter_map(|id| id_index.get(id).cloned())
+                .collect();
+            if results.len() >= limit {
+                results.truncate(limit);
+                return results;
+            }
+
+            // Phase 2: content scan for remaining
+            let existing: std::collections::HashSet<&str> =
+                results.iter().map(|c| c.id.as_str()).collect();
+            let remaining = limit - results.len();
+
+            let files = self.chunks_by_file.read();
+            let mut extra: Vec<CodeChunk> = files
+                .values()
+                .flatten()
+                .filter(|c| {
+                    !existing.contains(c.id.as_str())
+                        && (c.content.to_lowercase().contains(&query_lower)
+                            || c.relative_path.to_lowercase().contains(&query_lower))
+                })
+                .take(remaining)
+                .cloned()
+                .collect();
+            results.append(&mut extra);
+            return results;
+        }
+
+        // Phase 2 only: no symbol match found, content scan only
+        let files = self.chunks_by_file.read();
         files
             .values()
             .flatten()
@@ -144,6 +201,7 @@ impl ChunkStore {
                     || c.content.to_lowercase().contains(&query_lower)
                     || c.relative_path.to_lowercase().contains(&query_lower)
             })
+            .take(limit)
             .cloned()
             .collect()
     }

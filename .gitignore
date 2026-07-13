@@ -3,3 +3,4 @@
 /.fva-test
 *.log
 mcps/
+.claude/
