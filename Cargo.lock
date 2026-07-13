@@ -2017,7 +2017,7 @@ checksum = "29a4ebea7b8a2840cd59358bbf396f6f04313ce8eae84ac79703ce80298b8731"
 dependencies = [
  "file-id",
  "log",
- "notify 9.0.0-rc.4",
+ "notify",
  "notify-types",
  "rustc-hash",
  "walkdir",
@@ -2052,7 +2052,7 @@ dependencies = [
  "memchr",
  "memmap2",
  "neo_frizbee",
- "notify 9.0.0-rc.4",
+ "notify",
  "parking_lot",
  "pathdiff",
  "rayon",
@@ -2143,15 +2143,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "fsevent-sys"
-version = "4.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -2271,7 +2262,6 @@ dependencies = [
 name = "fva"
 version = "1.0.3-beta"
 dependencies = [
- "ahash",
  "anyhow",
  "arrow-array 55.2.0",
  "arrow-schema 55.2.0",
@@ -2283,14 +2273,9 @@ dependencies = [
  "fff-query-parser",
  "fff-search",
  "git2",
- "globset",
- "heed",
  "ignore",
  "lancedb",
- "memmap2",
  "mimalloc",
- "notify 8.2.0",
- "notify-debouncer-full",
  "parking_lot",
  "petgraph",
  "rayon",
@@ -4088,24 +4073,6 @@ dependencies = [
 
 [[package]]
 name = "notify"
-version = "8.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
-dependencies = [
- "bitflags 2.13.0",
- "fsevent-sys",
- "inotify",
- "kqueue",
- "libc",
- "log",
- "mio",
- "notify-types",
- "walkdir",
- "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "notify"
 version = "9.0.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b44b771d4dd781ef14c84078693e67495da6b47f609f72e8a4da8420a861240e"
@@ -4122,19 +4089,6 @@ dependencies = [
  "walkdir",
  "windows-sys 0.61.2",
  "xxhash-rust",
-]
-
-[[package]]
-name = "notify-debouncer-full"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2d88b1a7538054351c8258338df7c931a590513fb3745e8c15eb9ff4199b8d1"
-dependencies = [
- "file-id",
- "log",
- "notify 8.2.0",
- "notify-types",
- "walkdir",
 ]
 
 [[package]]

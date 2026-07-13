@@ -37,10 +37,9 @@ enable_content_indexing = true
 provider = "local"
 # Voyage API key (env: VOYAGE_API_KEY)
 voyage_api_key = ""
+# Markdown to HTML directory (default: output)
 # Model name
 model = "voyage-code-3"
-# Batch size for embedding requests
-batch_size = 32
 # Embedding dimensions (auto-detected per model)
 dimensions = 1024
 

@@ -24,9 +24,7 @@ pub fn extract_edges(chunks: &[CodeChunk]) -> Vec<GraphEdge> {
     let keywords: HashSet<&str> = [
         "if", "for", "while", "match", "return", "let", "mut", "pub", "fn", "struct", "enum",
         "impl", "trait", "mod", "use", "self", "Self", "super", "crate", "loop", "async", "await",
-        "move", "ref", "type", "where", "const", "static", "unsafe", "extern", "true", "false",
-        "Some", "None", "Ok", "Err", "println", "print", "format", "vec", "Box", "String", "Vec",
-        "Option", "Result", "new", "default", "clone", "into",
+        "move", "ref", "unsafe", "true", "false",
     ]
     .into_iter()
     .collect();

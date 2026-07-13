@@ -86,7 +86,10 @@ impl BenchSuite {
         Self {
             report: BenchReport {
                 version: env!("CARGO_PKG_VERSION").to_string(),
-                timestamp: chrono_like_timestamp(),
+                timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_else(|_| "0".to_string()),
                 repo,
                 corpus: None,
                 results: Vec::new(),
@@ -116,13 +119,4 @@ impl From<BenchSuite> for BenchReport {
     fn from(s: BenchSuite) -> Self {
         s.report
     }
-}
-
-fn chrono_like_timestamp() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    format!("{secs}")
 }

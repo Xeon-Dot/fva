@@ -16,6 +16,8 @@ pub trait Embedder: Send + Sync {
     fn name(&self) -> &str;
     fn dimensions(&self) -> usize;
     fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
+
+    /// Embed a single text, returning one vector.
     fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
         let results = self.embed(&[text.to_string()])?;
         results

@@ -3,6 +3,9 @@
 //! Uses feature hashing (similar to HashingVectorizer) for fast,
 //! deterministic embeddings suitable for code semantic search.
 
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+
 use super::{Embedder, normalize};
 use crate::error::Result;
 
@@ -35,7 +38,11 @@ impl LocalEmbedder {
         let bytes = lower.as_bytes();
         if bytes.len() >= 3 {
             for w in bytes.windows(3) {
-                let h = hash_bytes(w);
+                let h = {
+                    let mut hasher = DefaultHasher::new();
+                    w.hash(&mut hasher);
+                    hasher.finish()
+                };
                 let idx = (h as usize) % dims;
                 let sign = if h & 1 == 0 { 1.0 } else { -1.0 };
                 vec[idx] += sign * 0.5;
@@ -48,7 +55,7 @@ impl LocalEmbedder {
                 continue;
             }
             for_each_identifier_part(token, |part| {
-                add_feature(&mut vec, fast_lower(part).as_bytes(), 0.8, dims);
+                add_feature(&mut vec, part.to_ascii_lowercase().as_bytes(), 0.8, dims);
             });
         }
 
@@ -57,31 +64,14 @@ impl LocalEmbedder {
     }
 }
 
-/// FNV-1a 64-bit hash for a byte slice.
-fn hash_bytes(data: &[u8]) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325; // FNV-1a offset basis
-    for &b in data {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(0x100_0000_01b3); // FNV-1a prime
-    }
-    hash
-}
-
 /// Hash a feature and add its weighted contribution to the vector.
 fn add_feature(vec: &mut [f32], feature: &[u8], weight: f32, dims: usize) {
-    let h = hash_bytes(feature);
+    let mut hasher = DefaultHasher::new();
+    feature.hash(&mut hasher);
+    let h = hasher.finish();
     let idx = (h as usize) % dims;
     let sign = if h & 1 == 0 { 1.0 } else { -1.0 };
     vec[idx] += sign * weight;
-}
-
-/// Fast lowercase of a short ASCII-biased string (allocates only for non-ASCII).
-fn fast_lower(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        out.push(ch.to_ascii_lowercase());
-    }
-    out
 }
 
 /// Walk identifier parts without allocating a Vec<String>.

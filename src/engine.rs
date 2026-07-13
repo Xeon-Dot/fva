@@ -67,14 +67,9 @@ impl FvaEngine {
         })
     }
 
-    pub fn persist(&self) -> Result<()> {
-        self.vectors.persist()?;
-        self.graph.persist()?;
-        Ok(())
-    }
-
     pub fn shutdown(&self) {
-        let _ = self.persist();
+        let _ = self.vectors.persist();
+        let _ = self.graph.persist();
         self.fff.shutdown();
     }
 }
