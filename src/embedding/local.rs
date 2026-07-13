@@ -3,8 +3,8 @@
 //! Uses feature hashing (similar to HashingVectorizer) for fast,
 //! deterministic embeddings suitable for code semantic search.
 
-use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use super::{Embedder, normalize};
 use crate::error::Result;

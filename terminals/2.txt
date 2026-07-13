@@ -1,8 +1,0 @@
----
-pid: 36728
-cwd: "D:\Dev\FVA"
-command: "if (Test-Path \"D:\\Dev\\zzk\\.commandcode\") { Get-ChildItem -Recurse \"D:\\Dev\\zzk\\.commandcode\" | Select-Object FullName } else { Write-Host \"not found\" }; commandcode --help 2>&1 | Select-Object -First 30"
-started_at: 2026-06-23T07:19:23.568Z
-running_for_ms: 15012    
----
-
