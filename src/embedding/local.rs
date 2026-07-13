@@ -5,7 +5,7 @@
 //! semantic code similarity.
 
 use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 
 use super::{Embedder, normalize};
 use crate::error::Result;
@@ -139,10 +139,7 @@ impl LocalEmbedder {
                 add_feature_multi(&mut vec, b"__arrow__", 0.35, dims);
             }
             // Comment lines
-            if trimmed.starts_with("//")
-                || trimmed.starts_with("#")
-                || trimmed.starts_with("/*")
-            {
+            if trimmed.starts_with("//") || trimmed.starts_with("#") || trimmed.starts_with("/*") {
                 add_feature_multi(&mut vec, b"__comment__", 0.25, dims);
             }
         }
@@ -362,15 +359,9 @@ mod tests {
     #[test]
     fn repeated_tokens_get_higher_tf_weight() {
         let e = LocalEmbedder::new(256);
-        let repeated = e
-            .embed_one("data data data process process")
-            .unwrap();
-        let single = e
-            .embed_one("data process query result")
-            .unwrap();
-        let different = e
-            .embed_one("render parse execute compute")
-            .unwrap();
+        let repeated = e.embed_one("data data data process process").unwrap();
+        let single = e.embed_one("data process query result").unwrap();
+        let different = e.embed_one("render parse execute compute").unwrap();
         let sim_rs = super::super::cosine_similarity(&repeated, &single);
         let sim_rd = super::super::cosine_similarity(&repeated, &different);
         assert!(

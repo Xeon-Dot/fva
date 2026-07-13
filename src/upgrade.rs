@@ -14,7 +14,7 @@ const REPO: &str = "Xeon-Dot/fva";
 const API_LATEST: &str = "https://api.github.com/repos/Xeon-Dot/fva/releases/latest";
 
 #[cfg(not(windows))]
-const INSTALL_SHELL: (&str, &[&str], &str, &str) = ("sh", &["-c"], "-fsSL", "INSTALL_DIR");
+const INSTALL_SHELL: (&str, &[&str], &str, &str) = ("sh", &["-c"], "curl -fsSL", "INSTALL_DIR");
 #[cfg(windows)]
 const INSTALL_SHELL: (&str, &[&str], &str, &str) = (
     "powershell",
