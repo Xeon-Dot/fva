@@ -4,8 +4,8 @@
 //! digit-boundary token splitting, and code structure-awareness for improved
 //! semantic code similarity.
 
-use std::hash::Hasher;
 use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use super::{Embedder, normalize};
 use crate::error::Result;

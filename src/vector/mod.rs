@@ -39,13 +39,13 @@ pub fn build_vector_store(
         }
         #[cfg(feature = "lancedb")]
         "lancedb-native" => Err(FvaError::Other(
-            "native LanceDB the model not yet wired — use the model = \"flat\"".into(),
+            "native LanceDB backend not yet wired — use backend = \"flat\"".into(),
         )),
         #[cfg(not(feature = "lancedb"))]
         "lancedb-native" => Err(FvaError::Config(
             "lancedb-native requires building with --features lancedb".into(),
         )),
-        other => Err(FvaError::Config(format!("unknown vector the model: {other}"))),
+        other => Err(FvaError::Config(format!("unknown vector backend: {other}"))),
     }
 }
 
@@ -59,24 +59,13 @@ pub fn index_chunks(
         return Ok(0);
     }
 
-    // Build rich embedding texts that encode as much signal as possible
-    // for the (potentially hash-based) embedder to exploit.
     let texts: Vec<String> = chunks
         .iter()
         .map(|c| {
-            // Replicate the symbol name and kind to increase their weight
-            // in the embedding, since they are the most discriminative signals.
-            let heading = format!(
-                "{} {} {} in {}",
-                c.symbol_kind, c.symbol_name, c.language, c.relative_path
-            );
-
-            // Extract the first line of content (signature line) as a separate
-            // signal, since it often contains parameter types and return types
-            // that are very informative.
-            let first_line = c.content.lines().next().unwrap_or("");
-
-            format!("{}\n{}\n{}", heading, first_line, c.content)
+            format!(
+                "{} {} {}\n{}",
+                c.language, c.symbol_kind, c.symbol_name, c.content
+            )
         })
         .collect();
 

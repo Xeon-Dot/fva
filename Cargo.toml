@@ -1,6 +1,6 @@
 [package]
 name = "fva"
-version = "1.0.3-beta"
+version = "1.0.5-beta"
 edition = "2024"
 description = "FFF · Vector · AST — hybrid codebase intelligence engine for AI coding agents"
 license = "MIT"
@@ -14,8 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 # FFF — fast file search & grep
-fff-search = "0.9.7-nightly.957f222"
-fff-query-parser = "0.9.7-nightly.957f222"
+fff-search = "0"
+fff-query-parser = "0"
 
 # MCP server
 rmcp = { version = "1.7", features = ["server", "transport-io", "macros"] }
