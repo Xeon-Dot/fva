@@ -35,6 +35,7 @@ fn remove_symbols_from_index(sym_index: &mut HashMap<String, Vec<String>>, chunk
 pub struct ChunkStore {
     chunks_by_file: RwLock<HashMap<String, Vec<CodeChunk>>>,
     chunks_by_symbol: RwLock<HashMap<String, Vec<String>>>,
+    chunks_by_id: RwLock<HashMap<String, CodeChunk>>,
     file_hashes: RwLock<HashMap<String, String>>,
     file_meta: RwLock<HashMap<String, FileIndexMeta>>,
 }
@@ -50,17 +51,23 @@ impl ChunkStore {
         // Remove old symbol index entries for this file
         if let Some(old_chunks) = self.chunks_by_file.read().get(relative_path) {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             remove_symbols_from_index(&mut sym_index, old_chunks);
+            for old in old_chunks {
+                id_index.remove(&old.id);
+            }
         }
 
-        // Update symbol index
+        // Update symbol index and id index
         {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             for chunk in &chunks {
                 sym_index
                     .entry(chunk.symbol_name.to_lowercase())
                     .or_default()
                     .push(chunk.id.clone());
+                id_index.insert(chunk.id.clone(), chunk.clone());
             }
         }
 
@@ -94,7 +101,11 @@ impl ChunkStore {
     pub fn remove_file(&self, relative_path: &str) {
         if let Some(chunks) = self.chunks_by_file.write().remove(relative_path) {
             let mut sym_index = self.chunks_by_symbol.write();
+            let mut id_index = self.chunks_by_id.write();
             remove_symbols_from_index(&mut sym_index, &chunks);
+            for chunk in &chunks {
+                id_index.remove(&chunk.id);
+            }
         }
         self.file_hashes.write().remove(relative_path);
         self.file_meta.write().remove(relative_path);
@@ -126,10 +137,15 @@ impl ChunkStore {
             .cloned()
             .unwrap_or_default();
 
-        let files = self.chunks_by_file.read();
+        let id_index = self.chunks_by_id.read();
         ids.iter()
-            .filter_map(|id| files.values().flatten().find(|c| &c.id == id).cloned())
+            .filter_map(|id| id_index.get(id).cloned())
             .collect()
+    }
+
+    /// O(1) chunk lookup by ID.
+    pub fn chunk_by_id(&self, chunk_id: &str) -> Option<CodeChunk> {
+        self.chunks_by_id.read().get(chunk_id).cloned()
     }
 
     pub fn search_chunks(&self, query: &str) -> Vec<CodeChunk> {

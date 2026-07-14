@@ -12,7 +12,7 @@ use crate::graph::CallGraphStore;
 use crate::indexer::chunker::CodeChunk;
 use crate::indexer::store::ChunkStore;
 use crate::util::{HasScore, sort_by_score};
-use crate::vector::VectorStore;
+use crate::vector::{VectorHit, VectorStore};
 
 /// A fused search result with multi-signal scoring.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +48,26 @@ impl HybridHit {
             vector_score: 0.0,
             graph_score: 0.0,
             sources: Vec::new(),
+        }
+    }
+
+    /// Build from VectorHit metadata when the full CodeChunk is not available
+    /// (e.g. before AST indexing completes — vector store is persistent, ChunkStore is not).
+    pub fn from_vector_hit(vh: &VectorHit) -> Self {
+        Self {
+            chunk_id: vh.chunk_id.clone(),
+            relative_path: vh.relative_path.clone(),
+            symbol_name: vh.symbol_name.clone(),
+            symbol_kind: vh.symbol_kind.clone(),
+            language: vh.language.clone(),
+            start_line: vh.start_line,
+            end_line: vh.end_line,
+            content: vh.content_preview.clone(),
+            score: vh.score,
+            fff_score: 0.0,
+            vector_score: vh.score,
+            graph_score: 0.0,
+            sources: vec!["vector".into()],
         }
     }
 }
@@ -132,15 +152,23 @@ impl HybridQueryEngine {
             && let Ok(vector_hits) = self.vectors.search(&query_vec, limit * 5)
         {
             for hit in vector_hits {
-                if let Some(chunk) = self.find_chunk(&hit.chunk_id) {
-                    self.merge_hit(
-                        &mut candidates,
-                        &chunk,
-                        0.0,
-                        hit.score * self.config.vector_weight,
-                        0.0,
-                        "vector",
-                    );
+                match self.store.chunk_by_id(&hit.chunk_id) {
+                    Some(chunk) => {
+                        self.merge_hit(
+                            &mut candidates,
+                            &chunk,
+                            0.0,
+                            hit.score * self.config.vector_weight,
+                            0.0,
+                            "vector",
+                        );
+                    }
+                    None => {
+                        // ChunkStore not yet populated (e.g. background index still running).
+                        // Fall back to VectorHit metadata — it has everything we need.
+                        let hybrid = HybridHit::from_vector_hit(&hit);
+                        candidates.entry(hybrid.chunk_id.clone()).or_insert(hybrid);
+                    }
                 }
             }
         }
@@ -194,13 +222,17 @@ impl HybridQueryEngine {
             && let Ok(vector_hits) = self.vectors.search(&query_vec, limit)
         {
             for vh in vector_hits {
-                if let Some(chunk) = self.find_chunk(&vh.chunk_id) {
-                    let mut hit = HybridHit::from_chunk(&chunk);
-                    hit.score = vh.score;
-                    hit.vector_score = vh.score;
-                    hit.sources = vec!["vector".into()];
-                    hits.push(hit);
-                }
+                let hit = match self.store.chunk_by_id(&vh.chunk_id) {
+                    Some(chunk) => {
+                        let mut h = HybridHit::from_chunk(&chunk);
+                        h.score = vh.score;
+                        h.vector_score = vh.score;
+                        h.sources = vec!["vector".into()];
+                        h
+                    }
+                    None => HybridHit::from_vector_hit(&vh),
+                };
+                hits.push(hit);
             }
         }
 
@@ -209,13 +241,6 @@ impl HybridQueryEngine {
             hits,
             query: query.to_string(),
         }
-    }
-
-    fn find_chunk(&self, chunk_id: &str) -> Option<CodeChunk> {
-        self.store
-            .all_chunks()
-            .into_iter()
-            .find(|c| c.id == chunk_id)
     }
 
     fn merge_hit(
