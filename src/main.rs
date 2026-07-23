@@ -6,10 +6,10 @@ use clap::{Parser, Subcommand};
 use rmcp::{ServiceExt, transport::stdio};
 use tracing_subscriber::{EnvFilter, fmt};
 
+use fva::cli_output;
 use fva::config::Config;
 use fva::engine::FvaEngine;
 use fva::mcp::FvaServer;
-use fva::query::context::ContextBuilder;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -173,8 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     if matches!(cli.command, Some(Commands::Version)) {
-        println!("fva {} — FFF · Vector · AST", env!("CARGO_PKG_VERSION"));
-        println!("Phases 1-4: FFF + Tree-sitter + Vectors + Call Graph + MCP");
+        cli_output::version(env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
 
@@ -204,25 +203,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command.unwrap_or(Commands::Serve) {
         Commands::Index => {
             let count = engine.indexer.index_all()?;
-            println!("Indexed {count} chunks — {:?}", engine.indexer.stats());
-            println!("Vectors: {:?}", engine.vectors.stats());
-            println!("Graph: {:?}", engine.graph.stats());
+            let ast = engine.indexer.stats();
+            let vec = engine.vectors.stats();
+            let g = engine.graph.stats();
+            cli_output::index_done(count, &ast, &vec, &g);
             engine.shutdown();
         }
 
         Commands::Status => {
-            // Load persisted index if in-memory store is empty
             if engine.indexer.stats().indexed_files == 0 {
                 let _ = engine.indexer.index_all();
             }
-            let status = serde_json::json!({
-                "fff_files": engine.fff.total_files(),
-                "ast": engine.indexer.stats(),
-                "vectors": engine.vectors.stats(),
-                "graph": engine.graph.stats(),
-                "embedder": engine.embedder.name(),
-            });
-            println!("{}", serde_json::to_string_pretty(&status)?);
+            let ast = engine.indexer.stats();
+            let vec = engine.vectors.stats();
+            let g = engine.graph.stats();
+            cli_output::status(engine.fff.total_files(), &ast, &vec, &g, engine.embedder.name());
             engine.shutdown();
         }
 
@@ -265,8 +260,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = engine.indexer.index_all();
             }
             let result = engine.query.hybrid_search(&query, limit);
-            let ctx = engine.context.build(&query, None, &result);
-            println!("{}", ContextBuilder::format_context(&ctx));
+            cli_output::search_header(&query, result.hits.len());
+            for (i, hit) in result.hits.iter().enumerate() {
+                cli_output::search_hit(i + 1, hit);
+            }
             engine.shutdown();
         }
 
@@ -294,21 +291,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .filter(|t| !t.is_empty())
                         .collect();
                     engine.wiki.write(&slug, &title, &tags, &content)?;
-                    println!("Saved '{}'", slug);
+                    cli_output::wiki_saved(&slug);
                 }
                 WikiCommands::Read { slug } => {
                     let entry = engine.wiki.read(&slug)?;
-                    if !entry.tags.is_empty() {
-                        println!("tags: {}", entry.tags.join(", "));
-                    }
-                    println!("created: {}", entry.created);
-                    println!("updated: {}", entry.updated);
-                    println!();
-                    println!("{}", entry.content);
+                    cli_output::wiki_read(&entry.slug, &entry.tags, &entry.created, &entry.updated, &entry.content);
                 }
                 WikiCommands::Delete { slug } => {
                     engine.wiki.delete(&slug)?;
-                    println!("Deleted '{}'", slug);
+                    cli_output::wiki_deleted(&slug);
                 }
                 WikiCommands::Search { query, tags, limit } => {
                     let tags: Option<Vec<String>> = tags.map(|t| {
@@ -318,21 +309,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .collect()
                     }).filter(|v: &Vec<String>| !v.is_empty());
                     let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
-                    if results.is_empty() {
-                        println!("0 results for '{query}'");
-                    } else {
-                        println!("{} results for '{query}'\n", results.len());
-                        for (entry, score) in &results {
-                            let tags = if entry.tags.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" [{}]", entry.tags.join(", "))
-                            };
-                            println!("### {}{} (score={:.3})", entry.title, tags, score);
-                            println!("{}", entry.content);
-                            println!();
-                        }
-                    }
+                    let mapped: Vec<(String, Vec<String>, String, f64)> = results
+                        .iter()
+                        .map(|(e, score)| (e.title.clone(), e.tags.clone(), e.content.clone(), *score as f64))
+                        .collect();
+                    cli_output::wiki_search_results(&query, &mapped);
                 }
                 WikiCommands::List { tags } => {
                     let tags: Option<Vec<String>> = tags.map(|t| {
@@ -342,22 +323,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .collect()
                     }).filter(|v: &Vec<String>| !v.is_empty());
                     let entries = engine.wiki.list(tags.as_deref());
-                    if entries.is_empty() {
-                        println!("0 wiki entries.");
-                    } else {
-                        println!("{} wiki entries\n", entries.len());
-                        for entry in &entries {
-                            let tags = if entry.tags.is_empty() {
-                                String::new()
-                            } else {
-                                format!(" [{}]", entry.tags.join(", "))
-                            };
-                            println!(
-                                "  {} — {}{} (updated: {})",
-                                entry.slug, entry.title, tags, entry.updated
-                            );
-                        }
-                    }
+                    let mapped: Vec<(String, String, Vec<String>, String)> = entries
+                        .iter()
+                        .map(|e| (e.slug.clone(), e.title.clone(), e.tags.clone(), e.updated.clone()))
+                        .collect();
+                    cli_output::wiki_list(&mapped);
                 }
             }
             engine.shutdown();

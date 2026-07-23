@@ -1,4 +1,5 @@
 pub mod bench;
+pub mod cli_output;
 pub mod config;
 pub mod embedding;
 pub mod engine;

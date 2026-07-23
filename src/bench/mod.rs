@@ -327,22 +327,29 @@ pub fn emit(report: &BenchReport, opts: &BenchOptions) {
 }
 
 fn print_table(report: &BenchReport) {
+    use console::style;
+
     const W: usize = 68;
     println!("\n+{:-<W$}+", "", W = W);
     println!(
-        "|  FVA Benchmark - {:<50} |",
-        truncate_str(&report.repo, 50)
+        "|  {} {}",
+        style("FVA Benchmark -").bold().cyan(),
+        style(truncate_str(&report.repo, 50)).white()
     );
     println!("+{:-<W$}+", "", W = W);
 
     if let Some(c) = &report.corpus {
         println!(
             "|  Corpus: {} FFF | {} chunks | {} vectors | {} edges",
-            c.fff_files, c.total_chunks, c.total_vectors, c.graph_edges
+            style(c.fff_files).yellow(),
+            style(c.total_chunks).yellow(),
+            style(c.total_vectors).yellow(),
+            style(c.graph_edges).yellow()
         );
         println!(
             "|  Embedder: {} | Indexed: {} files",
-            c.embedder, c.indexed_files
+            style(&c.embedder).green(),
+            style(c.indexed_files).yellow()
         );
         println!("+{:-<W$}+", "", W = W);
     }
@@ -355,10 +362,10 @@ fn print_table(report: &BenchReport) {
 
     for r in &report.results {
         let status = match r.status {
-            TargetStatus::Pass => "PASS",
-            TargetStatus::Fail => "FAIL",
-            TargetStatus::NoTarget => "  - ",
-            TargetStatus::Warn => "WARN",
+            TargetStatus::Pass => style("PASS").green().bold().to_string(),
+            TargetStatus::Fail => style("FAIL").red().bold().to_string(),
+            TargetStatus::NoTarget => style("  - ").dim().to_string(),
+            TargetStatus::Warn => style("WARN").yellow().bold().to_string(),
         };
         println!(
             "|  {:<32} {:>8.2} {:>8.2} {:>6} |",
@@ -384,7 +391,10 @@ fn print_table(report: &BenchReport) {
     println!("+{:-<W$}+", "", W = W);
     println!(
         "|  Total: {:.0}ms | {}/{} passed | {} failed",
-        report.duration_total_ms, pass, total, fail
+        report.duration_total_ms,
+        style(pass).green(),
+        total,
+        if fail > 0 { style(fail).red().to_string() } else { style(fail).to_string() }
     );
     println!("+{:-<W$}+", "", W = W);
 }
