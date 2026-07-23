@@ -11,6 +11,7 @@ use crate::graph::CallGraphStore;
 use crate::indexer::Indexer;
 use crate::query::{ContextBuilder, HybridQueryEngine};
 use crate::vector::{VectorStore, build_vector_store};
+use crate::wiki::WikiStore;
 
 /// Central FVA engine holding all subsystems.
 pub struct FvaEngine {
@@ -23,6 +24,7 @@ pub struct FvaEngine {
     pub graph: Arc<CallGraphStore>,
     pub query: HybridQueryEngine,
     pub context: ContextBuilder,
+    pub wiki: Arc<WikiStore>,
 }
 
 impl FvaEngine {
@@ -54,6 +56,9 @@ impl FvaEngine {
         );
         let context = ContextBuilder::new(store, graph.clone(), config.query.max_context_tokens);
 
+        let wiki_dir = data_dir.join("wiki");
+        let wiki = Arc::new(WikiStore::open(wiki_dir, embedder.clone())?);
+
         Ok(Self {
             root,
             config,
@@ -64,12 +69,14 @@ impl FvaEngine {
             graph,
             query,
             context,
+            wiki,
         })
     }
 
     pub fn shutdown(&self) {
         let _ = self.vectors.persist();
         let _ = self.graph.persist();
+        let _ = self.wiki.persist();
         self.fff.shutdown();
     }
 }

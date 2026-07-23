@@ -26,11 +26,20 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "7. **get_smart_context** — Token-efficient combined context for a task.\n",
     "8. **index_status** — Check indexing progress.\n",
     "\n",
+    "## Wiki (knowledge base)\n",
+    "\n",
+    "9. **wiki_write** — Create/update a knowledge entry (slug, title, content, tags).\n",
+    "10. **wiki_read** — Read a wiki entry by slug.\n",
+    "11. **wiki_delete** — Delete a wiki entry.\n",
+    "12. **wiki_search** — Semantic search over wiki entries with tag filtering.\n",
+    "13. **wiki_list** — List all wiki entries, optionally filtered by tags.\n",
+    "\n",
     "## Rules\n",
     "\n",
     "- Prefer **hybrid_search** or **get_smart_context** over repeated grep+read cycles.\n",
     "- Grep bare identifiers only: 'MyHandler', not 'fn MyHandler'.\n",
     "- AST chunks preserve syntactic integrity — use instead of raw file reads.\n",
+    "- Use **wiki_write** to persist learnings, decisions, and patterns for future sessions.\n",
 );
 
 fn empty_result(msg: String) -> CallToolResult {
@@ -107,6 +116,46 @@ pub struct GetSmartContextParams {
     pub path: Option<String>,
     #[serde(rename = "maxResults")]
     pub max_results: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WikiWriteParams {
+    /// Unique identifier / filename for the wiki entry (no extension).
+    pub slug: String,
+    /// Human-readable title.
+    pub title: String,
+    /// Markdown content body.
+    pub content: String,
+    /// Comma-separated tags for categorization.
+    pub tags: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WikiReadParams {
+    /// Slug of the wiki entry to read.
+    pub slug: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WikiDeleteParams {
+    /// Slug of the wiki entry to delete.
+    pub slug: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WikiSearchParams {
+    /// Natural language search query.
+    pub query: String,
+    /// Filter by tags (comma-separated).
+    pub tags: Option<String>,
+    #[serde(rename = "maxResults")]
+    pub max_results: Option<f64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WikiListParams {
+    /// Filter by tags (comma-separated).
+    pub tags: Option<String>,
 }
 
 #[derive(Clone)]
@@ -378,12 +427,13 @@ impl FvaServer {
 
     #[tool(
         name = "index_status",
-        description = "Check FVA indexing status: FFF, AST chunks, vectors, call graph."
+        description = "Check FVA indexing status: FFF, AST chunks, vectors, call graph, wiki."
     )]
     fn index_status(&self) -> Result<CallToolResult, ErrorData> {
         let stats = self.engine.indexer.stats();
         let vectors = self.engine.vectors.stats();
         let graph = self.engine.graph.stats();
+        let wiki = self.engine.wiki.stats();
 
         let status = serde_json::json!({
             "fff": {
@@ -406,11 +456,176 @@ impl FvaServer {
                 "nodes": graph.nodes,
                 "edges": graph.edges,
             },
+            "wiki": {
+                "total_entries": wiki.total_entries,
+            },
             "phase": "4 — Full hybrid intelligence",
         });
 
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&status).unwrap_or_default(),
+        )]))
+    }
+
+    #[tool(
+        name = "wiki_write",
+        description = "Create or update a wiki knowledge entry. Markdown content with automatic semantic indexing."
+    )]
+    fn wiki_write(
+        &self,
+        Parameters(params): Parameters<WikiWriteParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tags: Vec<String> = params
+            .tags
+            .unwrap_or_default()
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect();
+
+        self.engine
+            .wiki
+            .write(&params.slug, &params.title, &tags, &params.content)
+            .map_err(|e| ErrorData::internal_error(format!("wiki_write failed: {e}"), None))?;
+
+        Ok(empty_result(format!(
+            "Wiki entry '{}' saved ({} tags).",
+            params.slug,
+            tags.len()
+        )))
+    }
+
+    #[tool(
+        name = "wiki_read",
+        description = "Read a wiki knowledge entry by slug. Returns full markdown content with metadata."
+    )]
+    fn wiki_read(
+        &self,
+        Parameters(params): Parameters<WikiReadParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let entry = self
+            .engine
+            .wiki
+            .read(&params.slug)
+            .map_err(|e| ErrorData::internal_error(format!("wiki_read failed: {e}"), None))?;
+
+        let tags = if entry.tags.is_empty() {
+            String::new()
+        } else {
+            format!("tags: {}\n", entry.tags.join(", "))
+        };
+
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "# {}\n{}created: {}\nupdated: {}\n\n{}",
+            entry.title, tags, entry.created, entry.updated, entry.content
+        ))]))
+    }
+
+    #[tool(
+        name = "wiki_delete",
+        description = "Delete a wiki knowledge entry by slug."
+    )]
+    fn wiki_delete(
+        &self,
+        Parameters(params): Parameters<WikiDeleteParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        self.engine
+            .wiki
+            .delete(&params.slug)
+            .map_err(|e| ErrorData::internal_error(format!("wiki_delete failed: {e}"), None))?;
+
+        Ok(empty_result(format!(
+            "Wiki entry '{}' deleted.",
+            params.slug
+        )))
+    }
+
+    #[tool(
+        name = "wiki_search",
+        description = "Semantic search over wiki knowledge entries. Supports tag filtering. Returns matching entries with content."
+    )]
+    fn wiki_search(
+        &self,
+        Parameters(params): Parameters<WikiSearchParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (limit, _offset) =
+            resolve_pagination(params.max_results, None, self.default_max_results);
+        let tags: Option<Vec<String>> = params.tags.map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
+
+        let results = self
+            .engine
+            .wiki
+            .search(&params.query, tags.as_deref(), limit)
+            .map_err(|e| ErrorData::internal_error(format!("wiki_search failed: {e}"), None))?;
+
+        if results.is_empty() {
+            return Ok(empty_result(format!(
+                "0 wiki results for '{}'",
+                params.query
+            )));
+        }
+
+        let mut lines = vec![format!("{} wiki results for '{}'", results.len(), params.query)];
+        for (entry, score) in &results {
+            let tags = if entry.tags.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", entry.tags.join(", "))
+            };
+            lines.push(format!(
+                "\n### {}{} (score={:.3}, updated={})",
+                entry.title, tags, score, entry.updated
+            ));
+            let preview: String = entry.content.lines().take(10).collect::<Vec<_>>().join("\n");
+            lines.push(preview);
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            lines.join("\n"),
+        )]))
+    }
+
+    #[tool(
+        name = "wiki_list",
+        description = "List all wiki knowledge entries. Supports tag filtering. Returns slug, title, tags, and last updated."
+    )]
+    fn wiki_list(
+        &self,
+        Parameters(params): Parameters<WikiListParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let tags: Option<Vec<String>> = params.tags.map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        });
+
+        let entries = self.engine.wiki.list(tags.as_deref());
+
+        if entries.is_empty() {
+            return Ok(empty_result("0 wiki entries.".to_string()));
+        }
+
+        let mut lines = vec![format!("{} wiki entries", entries.len())];
+        for entry in &entries {
+            let tags = if entry.tags.is_empty() {
+                String::new()
+            } else {
+                format!(" [{}]", entry.tags.join(", "))
+            };
+            lines.push(format!(
+                "  {} — {}{} (updated: {})",
+                entry.slug, entry.title, tags, entry.updated
+            ));
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            lines.join("\n"),
         )]))
     }
 }

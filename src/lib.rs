@@ -11,6 +11,7 @@ pub mod query;
 pub mod upgrade;
 pub mod util;
 pub mod vector;
+pub mod wiki;
 
 pub use config::Config;
 pub use engine::FvaEngine;

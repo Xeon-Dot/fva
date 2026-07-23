@@ -37,6 +37,9 @@ pub enum FvaError {
     #[error("query error: {0}")]
     Query(String),
 
+    #[error("wiki error: {0}")]
+    Wiki(String),
+
     #[error("upgrade error: {0}")]
     Upgrade(String),
 
