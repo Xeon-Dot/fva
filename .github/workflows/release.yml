@@ -82,24 +82,12 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install protoc -y
 
-      - name: Cache sccache
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/sccache
-          key: ${{ runner.os }}-sccache-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-sccache-${{ matrix.target }}-
-
       - name: Build
         run: cargo build --release --all-features --target ${{ matrix.target }}
-        env:
-          SCCACHE_DIR: ${{ runner.temp }}/sccache
 
       - name: sccache stats
         if: always()
         run: sccache --show-stats
-        env:
-          SCCACHE_DIR: ${{ runner.temp }}/sccache
 
       - name: Package (tar.gz)
         if: matrix.archive_ext == 'tar.gz'
