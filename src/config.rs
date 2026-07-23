@@ -251,7 +251,7 @@ fn default_server_name() -> String {
     "fva".to_string()
 }
 fn default_log_level() -> String {
-    "info".to_string()
+    "warn".to_string()
 }
 
 impl Config {
