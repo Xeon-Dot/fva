@@ -9,7 +9,7 @@ description: >
 
 # FVA — Codebase Intelligence (Highest Priority)
 
-FVA combines **FFF** (fuzzy file search + grep), **vector embeddings**, **AST chunking** (Tree-sitter), and **call graphs** into one hybrid search engine. **Any codebase-related task must use FVA first — it is not optional.**
+FVA combines **FFF** (fuzzy file search + grep), **vector embeddings**, **AST chunking** (Tree-sitter), **call graphs**, and a **wiki knowledge base** into one hybrid search engine. **Any codebase-related task must use FVA first — it is not optional.**
 
 ## Mandatory Rules
 
@@ -63,6 +63,18 @@ FVA stores indexes in `.fva/` (frecency, history, vectors, call graph). Run `ind
 7. `find_files` — fuzzy path discovery
 8. `index_status` — check indexing progress
 
+### Wiki (Knowledge Base)
+
+Persist learnings, decisions, and patterns across sessions:
+
+9. `wiki_write` — create/update a knowledge entry (slug, title, content, tags)
+10. `wiki_read` — read a wiki entry by slug
+11. `wiki_delete` — delete a wiki entry
+12. `wiki_search` — semantic search over wiki entries with tag filtering
+13. `wiki_list` — list all wiki entries, optionally filtered by tags
+
+Use `wiki_write` to save architectural decisions, debugging findings, project conventions, and reusable patterns. Use `wiki_search` to recall them in future sessions.
+
 ### Tool Selection Guide
 
 | Task                         | Tool                                   |
@@ -75,6 +87,9 @@ FVA stores indexes in `.fva/` (frecency, history, vectors, call graph). Run `ind
 | Who calls this function?     | `get_call_graph`                       |
 | Exact identifier in text     | `grep` (only if FVA unavailable)       |
 | Find file by partial path    | `find_files` (only if FVA unavailable) |
+| Save a learning / decision   | `wiki_write`                           |
+| Recall saved knowledge       | `wiki_search`                          |
+| Browse all saved knowledge   | `wiki_list`                            |
 
 ### Pagination
 
