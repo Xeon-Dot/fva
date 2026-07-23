@@ -51,6 +51,11 @@ enum Commands {
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
     },
+    /// Wiki knowledge base — write, read, search, list entries.
+    Wiki {
+        #[command(subcommand)]
+        command: WikiCommands,
+    },
     /// Run performance benchmarks (Phase 5).
     Bench {
         /// Benchmark iterations per operation.
@@ -77,6 +82,51 @@ enum Commands {
         /// Reinstall even if already on the target version.
         #[arg(short, long)]
         force: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum WikiCommands {
+    /// Create or update a wiki entry.
+    Write {
+        /// Entry slug (filename without extension).
+        slug: String,
+        /// Entry title.
+        #[arg(short, long)]
+        title: String,
+        /// Markdown content. Reads from stdin if omitted.
+        #[arg(long)]
+        content: Option<String>,
+        /// Comma-separated tags.
+        #[arg(long)]
+        tags: Option<String>,
+    },
+    /// Read a wiki entry by slug.
+    Read {
+        /// Entry slug.
+        slug: String,
+    },
+    /// Delete a wiki entry by slug.
+    Delete {
+        /// Entry slug.
+        slug: String,
+    },
+    /// Semantic search over wiki entries.
+    Search {
+        /// Search query.
+        query: String,
+        /// Filter by comma-separated tags.
+        #[arg(short, long)]
+        tags: Option<String>,
+        /// Max results.
+        #[arg(short, long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// List wiki entries.
+    List {
+        /// Filter by comma-separated tags.
+        #[arg(short, long)]
+        tags: Option<String>,
     },
 }
 
@@ -217,6 +267,99 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let result = engine.query.hybrid_search(&query, limit);
             let ctx = engine.context.build(&query, None, &result);
             println!("{}", ContextBuilder::format_context(&ctx));
+            engine.shutdown();
+        }
+
+        Commands::Wiki { command } => {
+            match command {
+                WikiCommands::Write {
+                    slug,
+                    title,
+                    content,
+                    tags,
+                } => {
+                    let content = match content {
+                        Some(c) => c,
+                        None => {
+                            use std::io::Read;
+                            let mut buf = String::new();
+                            std::io::stdin().read_to_string(&mut buf)?;
+                            buf
+                        }
+                    };
+                    let tags: Vec<String> = tags
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|t| t.trim().to_string())
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    engine.wiki.write(&slug, &title, &tags, &content)?;
+                    println!("Saved '{}'", slug);
+                }
+                WikiCommands::Read { slug } => {
+                    let entry = engine.wiki.read(&slug)?;
+                    if !entry.tags.is_empty() {
+                        println!("tags: {}", entry.tags.join(", "));
+                    }
+                    println!("created: {}", entry.created);
+                    println!("updated: {}", entry.updated);
+                    println!();
+                    println!("{}", entry.content);
+                }
+                WikiCommands::Delete { slug } => {
+                    engine.wiki.delete(&slug)?;
+                    println!("Deleted '{}'", slug);
+                }
+                WikiCommands::Search { query, tags, limit } => {
+                    let tags: Option<Vec<String>> = tags.map(|t| {
+                        t.split(',')
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect()
+                    }).filter(|v: &Vec<String>| !v.is_empty());
+                    let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
+                    if results.is_empty() {
+                        println!("0 results for '{query}'");
+                    } else {
+                        println!("{} results for '{query}'\n", results.len());
+                        for (entry, score) in &results {
+                            let tags = if entry.tags.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" [{}]", entry.tags.join(", "))
+                            };
+                            println!("### {}{} (score={:.3})", entry.title, tags, score);
+                            println!("{}", entry.content);
+                            println!();
+                        }
+                    }
+                }
+                WikiCommands::List { tags } => {
+                    let tags: Option<Vec<String>> = tags.map(|t| {
+                        t.split(',')
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty())
+                            .collect()
+                    }).filter(|v: &Vec<String>| !v.is_empty());
+                    let entries = engine.wiki.list(tags.as_deref());
+                    if entries.is_empty() {
+                        println!("0 wiki entries.");
+                    } else {
+                        println!("{} wiki entries\n", entries.len());
+                        for entry in &entries {
+                            let tags = if entry.tags.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" [{}]", entry.tags.join(", "))
+                            };
+                            println!(
+                                "  {} — {}{} (updated: {})",
+                                entry.slug, entry.title, tags, entry.updated
+                            );
+                        }
+                    }
+                }
+            }
             engine.shutdown();
         }
 

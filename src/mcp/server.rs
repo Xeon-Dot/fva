@@ -555,7 +555,7 @@ impl FvaServer {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect()
-        });
+        }).filter(|v: &Vec<String>| !v.is_empty());
 
         let results = self
             .engine
@@ -603,7 +603,7 @@ impl FvaServer {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect()
-        });
+        }).filter(|v: &Vec<String>| !v.is_empty());
 
         let entries = self.engine.wiki.list(tags.as_deref());
 
