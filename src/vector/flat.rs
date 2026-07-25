@@ -50,6 +50,12 @@ struct VectorSnapshot {
     entries: Vec<StoredVector>,
 }
 
+#[derive(Serialize)]
+struct VectorSnapshotRef<'a> {
+    dimensions: usize,
+    entries: &'a [StoredVector],
+}
+
 /// A vector search hit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorHit {
@@ -281,9 +287,10 @@ impl VectorStore for FlatVectorStore {
     }
 
     fn persist(&self) -> Result<()> {
-        let snapshot = VectorSnapshot {
+        let entries = self.entries.read();
+        let snapshot = VectorSnapshotRef {
             dimensions: self.dimensions,
-            entries: self.entries.read().clone(),
+            entries: &entries,
         };
         let bytes = bincode::serialize(&snapshot)
             .map_err(|e| FvaError::Other(format!("vector serialize: {e}")))?;
