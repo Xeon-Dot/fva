@@ -19,25 +19,36 @@ pub struct FileIndexMeta {
     pub indexed_at: u64,
 }
 
-fn remove_symbols_from_index(sym_index: &mut HashMap<String, Vec<String>>, chunks: &[CodeChunk]) {
-    for chunk in chunks {
-        if let Some(ids) = sym_index.get_mut(&chunk.symbol_name.to_lowercase()) {
-            ids.retain(|id| id != &chunk.id);
-            if ids.is_empty() {
-                sym_index.remove(&chunk.symbol_name.to_lowercase());
-            }
+#[derive(Default)]
+struct ChunkStoreInner {
+    chunks_by_file: HashMap<String, Vec<CodeChunk>>,
+    chunks_by_symbol: HashMap<String, Vec<String>>,
+    chunks_by_id: HashMap<String, CodeChunk>,
+    file_hashes: HashMap<String, String>,
+    file_meta: HashMap<String, FileIndexMeta>,
+    search_blobs: HashMap<String, String>,
+}
+
+fn make_search_blob(chunk: &CodeChunk) -> String {
+    format!("{} {} {}", chunk.symbol_name, chunk.relative_path, chunk.content).to_lowercase()
+}
+
+fn remove_chunk_from_indices(inner: &mut ChunkStoreInner, chunk: &CodeChunk) {
+    let key = chunk.symbol_name.to_lowercase();
+    if let Some(ids) = inner.chunks_by_symbol.get_mut(&key) {
+        ids.retain(|id| id != &chunk.id);
+        if ids.is_empty() {
+            inner.chunks_by_symbol.remove(&key);
         }
     }
+    inner.chunks_by_id.remove(&chunk.id);
+    inner.search_blobs.remove(&chunk.id);
 }
 
 /// Thread-safe chunk store (Phase 1: in-memory; Phase 2+: persist to LanceDB).
 #[derive(Default)]
 pub struct ChunkStore {
-    chunks_by_file: RwLock<HashMap<String, Vec<CodeChunk>>>,
-    chunks_by_symbol: RwLock<HashMap<String, Vec<String>>>,
-    chunks_by_id: RwLock<HashMap<String, CodeChunk>>,
-    file_hashes: RwLock<HashMap<String, String>>,
-    file_meta: RwLock<HashMap<String, FileIndexMeta>>,
+    inner: RwLock<ChunkStoreInner>,
 }
 
 impl ChunkStore {
@@ -47,28 +58,35 @@ impl ChunkStore {
 
     pub fn upsert_file(&self, relative_path: &str, chunks: Vec<CodeChunk>, content_hash: &Hash) {
         let hash_str = content_hash.to_hex().to_string();
+        let mut inner = self.inner.write();
 
-        // Remove old symbol index entries for this file
-        if let Some(old_chunks) = self.chunks_by_file.read().get(relative_path) {
-            let mut sym_index = self.chunks_by_symbol.write();
-            let mut id_index = self.chunks_by_id.write();
-            remove_symbols_from_index(&mut sym_index, old_chunks);
-            for old in old_chunks {
-                id_index.remove(&old.id);
+        if let Some(old_chunks) = inner.chunks_by_file.get(relative_path) {
+            let old_ids: Vec<(String, String)> = old_chunks
+                .iter()
+                .map(|c| (c.id.clone(), c.symbol_name.to_lowercase()))
+                .collect();
+            for (id, sym_key) in &old_ids {
+                if let Some(ids) = inner.chunks_by_symbol.get_mut(sym_key) {
+                    ids.retain(|i| i != id);
+                    if ids.is_empty() {
+                        inner.chunks_by_symbol.remove(sym_key);
+                    }
+                }
+                inner.chunks_by_id.remove(id);
+                inner.search_blobs.remove(id);
             }
         }
 
-        // Update symbol index and id index
-        {
-            let mut sym_index = self.chunks_by_symbol.write();
-            let mut id_index = self.chunks_by_id.write();
-            for chunk in &chunks {
-                sym_index
-                    .entry(chunk.symbol_name.to_lowercase())
-                    .or_default()
-                    .push(chunk.id.clone());
-                id_index.insert(chunk.id.clone(), chunk.clone());
-            }
+        for chunk in &chunks {
+            inner
+                .chunks_by_symbol
+                .entry(chunk.symbol_name.to_lowercase())
+                .or_default()
+                .push(chunk.id.clone());
+            inner
+                .search_blobs
+                .insert(chunk.id.clone(), make_search_blob(chunk));
+            inner.chunks_by_id.insert(chunk.id.clone(), chunk.clone());
         }
 
         let language = chunks
@@ -87,42 +105,38 @@ impl ChunkStore {
                 .unwrap_or(0),
         };
 
-        self.chunks_by_file
-            .write()
+        inner
+            .chunks_by_file
             .insert(relative_path.to_string(), chunks);
-        self.file_hashes
-            .write()
-            .insert(relative_path.to_string(), hash_str);
-        self.file_meta
-            .write()
-            .insert(relative_path.to_string(), meta);
+        inner.file_hashes.insert(relative_path.to_string(), hash_str);
+        inner.file_meta.insert(relative_path.to_string(), meta);
     }
 
     pub fn remove_file(&self, relative_path: &str) {
-        if let Some(chunks) = self.chunks_by_file.write().remove(relative_path) {
-            let mut sym_index = self.chunks_by_symbol.write();
-            let mut id_index = self.chunks_by_id.write();
-            remove_symbols_from_index(&mut sym_index, &chunks);
+        let mut inner = self.inner.write();
+        if let Some(chunks) = inner.chunks_by_file.remove(relative_path) {
             for chunk in &chunks {
-                id_index.remove(&chunk.id);
+                remove_chunk_from_indices(&mut inner, chunk);
             }
         }
-        self.file_hashes.write().remove(relative_path);
-        self.file_meta.write().remove(relative_path);
+        inner.file_hashes.remove(relative_path);
+        inner.file_meta.remove(relative_path);
     }
 
     pub fn needs_reindex(&self, relative_path: &str, content_hash: &Hash) -> bool {
         let hash_str = content_hash.to_hex().to_string();
-        self.file_hashes
+        self.inner
             .read()
+            .file_hashes
             .get(relative_path)
             .map(|h| h != &hash_str)
             .unwrap_or(true)
     }
 
     pub fn chunks_for_file(&self, relative_path: &str) -> Vec<CodeChunk> {
-        self.chunks_by_file
+        self.inner
             .read()
+            .chunks_by_file
             .get(relative_path)
             .cloned()
             .unwrap_or_default()
@@ -130,43 +144,43 @@ impl ChunkStore {
 
     pub fn find_symbol(&self, symbol: &str) -> Vec<CodeChunk> {
         let key = symbol.to_lowercase();
-        let ids = self
-            .chunks_by_symbol
-            .read()
-            .get(&key)
-            .cloned()
-            .unwrap_or_default();
-
-        let id_index = self.chunks_by_id.read();
+        let inner = self.inner.read();
+        let Some(ids) = inner.chunks_by_symbol.get(&key) else {
+            return Vec::new();
+        };
         ids.iter()
-            .filter_map(|id| id_index.get(id).cloned())
+            .filter_map(|id| inner.chunks_by_id.get(id).cloned())
             .collect()
     }
 
     /// O(1) chunk lookup by ID.
     pub fn chunk_by_id(&self, chunk_id: &str) -> Option<CodeChunk> {
-        self.chunks_by_id.read().get(chunk_id).cloned()
+        self.inner.read().chunks_by_id.get(chunk_id).cloned()
     }
 
     pub fn search_chunks(&self, query: &str) -> Vec<CodeChunk> {
         let query_lower = query.to_lowercase();
-        let files = self.chunks_by_file.read();
+        let inner = self.inner.read();
 
-        files
+        inner
+            .chunks_by_file
             .values()
             .flatten()
             .filter(|c| {
-                c.symbol_name.to_lowercase().contains(&query_lower)
-                    || c.content.to_lowercase().contains(&query_lower)
-                    || c.relative_path.to_lowercase().contains(&query_lower)
+                inner
+                    .search_blobs
+                    .get(&c.id)
+                    .map(|blob| blob.contains(&query_lower))
+                    .unwrap_or(false)
             })
             .cloned()
             .collect()
     }
 
     pub fn all_chunks(&self) -> Vec<CodeChunk> {
-        self.chunks_by_file
+        self.inner
             .read()
+            .chunks_by_file
             .values()
             .flatten()
             .cloned()
@@ -175,16 +189,16 @@ impl ChunkStore {
 
     /// Clear content hashes so the next index pass re-processes all files (benchmark only).
     pub fn invalidate_hashes(&self) {
-        self.file_hashes.write().clear();
+        self.inner.write().file_hashes.clear();
     }
 
     pub fn stats(&self) -> IndexStats {
-        let files = self.chunks_by_file.read();
-        let total_chunks: usize = files.values().map(|v| v.len()).sum();
-        let total_symbols = self.chunks_by_symbol.read().len();
+        let inner = self.inner.read();
+        let total_chunks: usize = inner.chunks_by_file.values().map(|v| v.len()).sum();
+        let total_symbols = inner.chunks_by_symbol.len();
 
         IndexStats {
-            indexed_files: files.len(),
+            indexed_files: inner.chunks_by_file.len(),
             total_chunks,
             total_symbols,
         }

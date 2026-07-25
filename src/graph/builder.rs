@@ -16,10 +16,6 @@ fn call_re() -> &'static Regex {
 /// Extract call edges from a set of chunks.
 pub fn extract_edges(chunks: &[CodeChunk]) -> Vec<GraphEdge> {
     let mut edges = Vec::new();
-    let defined_symbols: HashSet<String> = chunks
-        .iter()
-        .map(|c| c.symbol_name.to_lowercase())
-        .collect();
 
     let keywords: HashSet<&str> = [
         "if", "for", "while", "match", "return", "let", "mut", "pub", "fn", "struct", "enum",
@@ -54,19 +50,8 @@ pub fn extract_edges(chunks: &[CodeChunk]) -> Vec<GraphEdge> {
             }
         }
 
-        // Boost edges to symbols defined in the same file
-        for other in &defined_symbols {
-            if other != &chunk.symbol_name.to_lowercase()
-                && chunk.content.to_lowercase().contains(other)
-            {
-                edges.push(GraphEdge {
-                    caller: caller.clone(),
-                    callee: other.clone(),
-                    file: chunk.relative_path.clone(),
-                    line: chunk.start_line,
-                });
-            }
-        }
+        // ponytail: removed O(N×M) "boost" loop that scanned every defined symbol
+        // against each chunk's content. The regex above already captures call edges.
     }
 
     edges
