@@ -28,10 +28,10 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "\n",
     "## Wiki (knowledge base)\n",
     "\n",
-    "9. **wiki_write** — Create/update a knowledge entry (slug, title, content, tags).\n",
+    "9. **wiki_write** — Create/update a knowledge entry. **Use freely — save anything useful** (slug, title, content, tags).\n",
     "10. **wiki_read** — Read a wiki entry by slug.\n",
     "11. **wiki_delete** — Delete a wiki entry.\n",
-    "12. **wiki_search** — Semantic search over wiki entries with tag filtering.\n",
+    "12. **wiki_search** — Semantic search over wiki entries with tag filtering. Use to recall saved knowledge before starting a task.\n",
     "13. **wiki_list** — List all wiki entries, optionally filtered by tags.\n",
     "\n",
     "## Rules\n",
@@ -39,7 +39,7 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "- Prefer **hybrid_search** or **get_smart_context** over repeated grep+read cycles.\n",
     "- Grep bare identifiers only: 'MyHandler', not 'fn MyHandler'.\n",
     "- AST chunks preserve syntactic integrity — use instead of raw file reads.\n",
-    "- Use **wiki_write** to persist learnings, decisions, and patterns for future sessions.\n",
+    "- Use **wiki_write** to persist any useful information — architecture, gotchas, conventions, patterns, trivia. Knowledge not saved is knowledge lost.\n",
 );
 
 fn empty_result(msg: String) -> CallToolResult {
@@ -469,7 +469,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_write",
-        description = "Create or update a wiki knowledge entry. Markdown content with automatic semantic indexing."
+        description = "Create or update a wiki knowledge entry. Use freely — save anything useful (decisions, tricks, gotchas, context). Markdown content with automatic semantic indexing."
     )]
     fn wiki_write(
         &self,
@@ -542,7 +542,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_search",
-        description = "Semantic search over wiki knowledge entries. Supports tag filtering. Returns matching entries with content."
+        description = "Semantic search over wiki knowledge entries. Supports tag filtering. Use to recall saved knowledge before starting a task. Returns matching entries with content."
     )]
     fn wiki_search(
         &self,

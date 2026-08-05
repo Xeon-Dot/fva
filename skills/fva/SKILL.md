@@ -65,7 +65,7 @@ FVA stores indexes in `.fva/` (frecency, history, vectors, call graph). Run `ind
 
 ### Wiki (Knowledge Base)
 
-Persist learnings, decisions, and patterns across sessions:
+Persist any useful information across sessions. Agents **MUST** use wiki proactively — knowledge not saved is knowledge lost.
 
 9. `wiki_write` — create/update a knowledge entry (slug, title, content, tags)
 10. `wiki_read` — read a wiki entry by slug
@@ -73,7 +73,13 @@ Persist learnings, decisions, and patterns across sessions:
 12. `wiki_search` — semantic search over wiki entries with tag filtering
 13. `wiki_list` — list all wiki entries, optionally filtered by tags
 
-Use `wiki_write` to save architectural decisions, debugging findings, project conventions, and reusable patterns. Use `wiki_search` to recall them in future sessions.
+**Save everything worth remembering:**
+- Architectural decisions, debugging findings, project conventions, reusable patterns
+- Important context discovered during a task (API quirks, config gotchas, undocumented behaviors)
+- Miscellaneous but useful details: file layouts, build steps, dependency notes, environment quirks
+- Any information that would help a future session understand the codebase faster
+
+Use `wiki_search` to recall saved knowledge in future sessions.
 
 ### Tool Selection Guide
 
@@ -87,7 +93,7 @@ Use `wiki_write` to save architectural decisions, debugging findings, project co
 | Who calls this function?     | `get_call_graph`                       |
 | Exact identifier in text     | `grep` (only if FVA unavailable)       |
 | Find file by partial path    | `find_files` (only if FVA unavailable) |
-| Save a learning / decision   | `wiki_write`                           |
+| Save any useful knowledge    | `wiki_write`                           |
 | Recall saved knowledge       | `wiki_search`                          |
 | Browse all saved knowledge   | `wiki_list`                            |
 
