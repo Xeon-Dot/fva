@@ -73,8 +73,8 @@ embedding/         Embedding providers
   voyage.rs        Voyage API embedder (optional, configurable)
 
 vector/            Vector storage
-  mod.rs           VectorStore trait, index_chunks() helper
-  flat.rs          FlatVectorStore — brute-force cosine, bincode persistence
+  mod.rs           VectorStore trait (async), index_chunks()/chunk_texts()/preview()
+  lancedb.rs       LanceDbVectorStore — native LanceDB (Lance format, async API)
 
 graph/             Call graph
   mod.rs           CallGraphStore — petgraph DiGraph, bincode persistence
@@ -102,14 +102,15 @@ util.rs            estimate_tokens, sort_by_score, http_client, resolve_paginati
 
 - `frecency/` — LMDB database for frecency tracking
 - `history/` — LMDB query history
-- `vectors/vectors.bin` — bincode-serialized vector store
+- `vectors/` — Lance table (native LanceDB vector store)
 - `call_graph.bin` — bincode-serialized call graph
 
 ### Key Design Decisions
 
 - **ChunkStore is in-memory (not persisted)** — populated on each `index_all()`. VectorStore and CallGraphStore persist to disk. After restart, hybrid search falls back to VectorHit metadata while the background index rebuilds.
+- **VectorStore is async** — the LanceDB API is tokio-based; the indexer splits into a sync rayon parse/embed phase and a sequential async upsert phase.
 - **HybridQueryEngine.merge_hit()** — uses `max()` per signal (FFF/vector/graph), sums scores. This means the same chunk can be boosted by all three signals simultaneously.
-- **FlatVectorStore.search()** — uses `select_nth_unstable` partial sort for top-k, then sorts only the top-k window descending. Avoids N full `VectorHit` allocations.
+- **LanceDbVectorStore** — native LanceDB with a FixedSizeList f32 vector column, cosine distance, `score = 1 - distance`; auto-persists (Lance format), `persist()` is a no-op.
 - **LocalEmbedder** — zero-dependency hash-based embedding with: multi-hash (2 salts) feature hashing, digit-boundary token splitting, TF weighting (sqrt), char n-grams (2/3/4), CamelCase/snake_case decomposition, exact-match boost for cased identifiers, structure markers.
 - **Incremental indexing** — BLAKE3 content hash. `needs_reindex()` returns false if hash unchanged; old vectors/graph entries are removed before re-index.
 
@@ -117,10 +118,10 @@ util.rs            estimate_tokens, sort_by_score, http_client, resolve_paginati
 
 Layered precedence: defaults → `~/.config/fva/config.toml` → `fva.toml`/`.fva.toml` (project root) → `--config` flag.
 
-Key settings in `config.example.toml`: embedding provider (local/voyage), vector model (flat/lancedb), hybrid search weights (fff=0.3, vector=0.5, graph=0.2), max context tokens (8000).
+Key settings in `config.example.toml`: embedding provider (local/voyage), vector backend (lancedb), hybrid search weights (fff=0.3, vector=0.5, graph=0.2), max context tokens (8000).
 
 ### Dependencies
 
-- **Required**: `fff-search`, `rmcp` (MCP), `tree-sitter-language-pack` (AST), `petgraph` (graph), `blake3`, `rayon`, `clap`, `serde`, `bincode`, `parking_lot`, `tracing`, `git2`
-- **Optional**: `lancedb` (feature-gated), `mimalloc` (default on, global allocator)
+- **Required**: `fff-search`, `rmcp` (MCP), `tree-sitter-language-pack` (AST), `petgraph` (graph), `blake3`, `rayon`, `clap`, `serde`, `parking_lot`, `tracing`, `git2`, `lancedb` + `arrow-*` (default features — the only vector backend), `futures`
+- **Optional**: `mimalloc` (default on, global allocator)
 - **Dev**: `tempfile`

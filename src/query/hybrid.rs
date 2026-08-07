@@ -115,7 +115,7 @@ impl HybridQueryEngine {
     }
 
     /// Stage 1+2+3 fused search.
-    pub fn hybrid_search(&self, query: &str, limit: usize) -> HybridSearchResult {
+    pub async fn hybrid_search(&self, query: &str, limit: usize) -> HybridSearchResult {
         let mut candidates: HashMap<String, HybridHit> = HashMap::new();
 
         // Stage 1: FFF file prefilter
@@ -149,7 +149,7 @@ impl HybridQueryEngine {
 
         // Stage 2: Vector semantic search
         if let Ok(query_vec) = self.embedder.embed_one(query)
-            && let Ok(vector_hits) = self.vectors.search(&query_vec, limit * 5)
+            && let Ok(vector_hits) = self.vectors.search(&query_vec, limit * 5).await
         {
             for hit in vector_hits {
                 match self.store.chunk_by_id(&hit.chunk_id) {
@@ -215,11 +215,11 @@ impl HybridQueryEngine {
     }
 
     /// Semantic search (vector-only with chunk enrichment).
-    pub fn semantic_search(&self, query: &str, limit: usize) -> HybridSearchResult {
+    pub async fn semantic_search(&self, query: &str, limit: usize) -> HybridSearchResult {
         let mut hits = Vec::new();
 
         if let Ok(query_vec) = self.embedder.embed_one(query)
-            && let Ok(vector_hits) = self.vectors.search(&query_vec, limit)
+            && let Ok(vector_hits) = self.vectors.search(&query_vec, limit).await
         {
             for vh in vector_hits {
                 let hit = match self.store.chunk_by_id(&vh.chunk_id) {

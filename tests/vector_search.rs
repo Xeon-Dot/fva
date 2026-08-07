@@ -1,141 +1,31 @@
-//! Integration tests for vector search quality and performance.
-//! These measure real search behaviour end-to-end.
+//! Integration tests for vector search quality.
+//! These measure real search behaviour end-to-end against the LanceDB store.
+
+mod common;
 
 use std::sync::Arc;
 
 use fva::embedding::{Embedder, LocalEmbedder, cosine_similarity};
 use fva::error::Result;
-use fva::indexer::chunker::CodeChunk;
-use fva::vector::{FlatVectorStore, VectorStore, index_chunks};
+use fva::vector::{LanceDbVectorStore, VectorStore, index_chunks};
+use tempfile::TempDir;
+
+use common::make_chunks;
 
 /// Helper to build a test vector store
-fn test_store() -> (Arc<dyn VectorStore>, Arc<dyn Embedder>) {
+async fn test_store() -> (Arc<dyn VectorStore>, Arc<dyn Embedder>, TempDir) {
     let embedder = Arc::new(LocalEmbedder::new(256));
-    let store = Arc::new(
-        FlatVectorStore::open(
-            std::env::temp_dir().join(format!("fva_test_vectors_{}", std::process::id())),
-            embedder.dimensions(),
-        )
-        .unwrap(),
+    let dir = TempDir::new().expect("tempdir");
+    let store: Arc<dyn VectorStore> = Arc::new(
+        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
+            .await
+            .expect("open lancedb store"),
     );
-    (store, embedder)
+    (store, embedder, dir)
 }
 
-/// Build a CodeChunk for testing
-fn make_chunk(id: &str, symbol: &str, kind: &str, content: &str, path: &str) -> CodeChunk {
-    CodeChunk {
-        id: id.to_string(),
-        file_path: path.to_string(),
-        relative_path: path.to_string(),
-        language: "rust".to_string(),
-        symbol_name: symbol.to_string(),
-        symbol_kind: kind.to_string(),
-        start_line: 1,
-        end_line: content.lines().count().max(1),
-        content: content.to_string(),
-        content_hash: "".to_string(),
-        line_count: content.lines().count().max(1),
-    }
-}
-
-fn make_chunks() -> Vec<CodeChunk> {
-    vec![
-        make_chunk(
-            "auth:login",
-            "login_user",
-            "fn",
-            "fn login_user(username: &str, password: &str) -> bool {\n    // authenticate user\n    true\n}",
-            "src/auth.rs",
-        ),
-        make_chunk(
-            "auth:logout",
-            "logout_user",
-            "fn",
-            "fn logout_user(session: &str) {\n    // clear session\n}",
-            "src/auth.rs",
-        ),
-        make_chunk(
-            "auth:validate",
-            "validate_token",
-            "fn",
-            "fn validate_token(token: &str) -> Result<User> {\n    // verify JWT token\n    Ok(User)\n}",
-            "src/auth.rs",
-        ),
-        make_chunk(
-            "db:query",
-            "query_users",
-            "fn",
-            "fn query_users(conn: &Connection) -> Result<Vec<User>> {\n    conn.query(\"SELECT * FROM users\")\n}",
-            "src/db.rs",
-        ),
-        make_chunk(
-            "db:insert",
-            "insert_user",
-            "fn",
-            "fn insert_user(conn: &Connection, user: &User) -> Result<()> {\n    conn.execute(\"INSERT INTO users VALUES\", user)\n}",
-            "src/db.rs",
-        ),
-        make_chunk(
-            "ui:render",
-            "render_html",
-            "fn",
-            "fn render_html(template: &str, data: &Data) -> String {\n    template.render(&data)\n}",
-            "src/ui.rs",
-        ),
-        make_chunk(
-            "ui:format",
-            "format_date",
-            "fn",
-            "fn format_date(dt: &DateTime) -> String {\n    dt.format(\"%Y-%m-%d\")\n}",
-            "src/ui.rs",
-        ),
-        make_chunk(
-            "sort:bubble",
-            "bubble_sort",
-            "fn",
-            "fn bubble_sort(arr: &mut [i32]) {\n    for i in 0..arr.len() {\n        for j in 0..arr.len()-i-1 {\n            if arr[j] > arr[j+1] {\n                arr.swap(j, j+1);\n            }\n        }\n    }\n}",
-            "src/sort.rs",
-        ),
-        make_chunk(
-            "sort:quick",
-            "quick_sort",
-            "fn",
-            "fn quick_sort(arr: &mut [i32]) {\n    if arr.len() <= 1 { return; }\n    let pivot = partition(arr);\n    quick_sort(&mut arr[..pivot]);\n    quick_sort(&mut arr[pivot+1..]);\n}",
-            "src/sort.rs",
-        ),
-        make_chunk(
-            "config:parse",
-            "parse_config",
-            "fn",
-            "fn parse_config(path: &Path) -> Result<Config> {\n    let content = std::fs::read_to_string(path)?;\n    toml::from_str(&content)\n}",
-            "src/config.rs",
-        ),
-        make_chunk(
-            "http:handle",
-            "handle_request",
-            "fn",
-            "fn handle_request(req: &Request) -> Response {\n    match req.method() {\n        Method::GET => handle_get(req),\n        Method::POST => handle_post(req),\n        _ => Response::not_found(),\n    }\n}",
-            "src/http.rs",
-        ),
-        make_chunk(
-            "http:parse",
-            "parse_body",
-            "fn",
-            "fn parse_body(req: &Request) -> Result<Body> {\n    let bytes = req.body_bytes();\n    serde_json::from_slice(&bytes)\n}",
-            "src/http.rs",
-        ),
-        make_chunk(
-            "math:add",
-            "add_numbers",
-            "fn",
-            "fn add_numbers(a: i32, b: i32) -> i32 { a + b }",
-            "src/math.rs",
-        ),
-    ]
-}
-
-#[test]
-fn test_embedding_quality_semantically_related() -> Result<()> {
+#[tokio::test]
+async fn test_embedding_quality_semantically_related() -> Result<()> {
     let embedder = LocalEmbedder::new(256);
 
     // Code dealing with authentication
@@ -175,19 +65,19 @@ fn test_embedding_quality_semantically_related() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_search_quality_relevant_results_on_top() -> Result<()> {
-    let (store, embedder) = test_store();
+#[tokio::test]
+async fn test_search_quality_relevant_results_on_top() -> Result<()> {
+    let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
     let count = chunks.len();
 
     // Index all test chunks
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks)?;
+    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     // Search for authentication-related code
     let query = "authenticate user login";
     let query_vec = embedder.embed_one(query)?;
-    let results = store.search(&query_vec, count)?;
+    let results = store.search(&query_vec, count).await?;
 
     assert!(!results.is_empty(), "should find results");
 
@@ -226,16 +116,16 @@ fn test_search_quality_relevant_results_on_top() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_search_rejects_unrelated_code() -> Result<()> {
-    let (store, embedder) = test_store();
+#[tokio::test]
+async fn test_search_rejects_unrelated_code() -> Result<()> {
+    let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks)?;
+    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     // Search for sorting algorithms
     let query = "sort array of integers";
     let query_vec = embedder.embed_one(query)?;
-    let results = store.search(&query_vec, chunks.len())?;
+    let results = store.search(&query_vec, chunks.len()).await?;
 
     println!("\n=== Search: '{}' ===", query);
     for (i, hit) in results.iter().enumerate() {
@@ -268,15 +158,14 @@ fn test_search_rejects_unrelated_code() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_parallel_search_performance() -> Result<()> {
+#[tokio::test]
+async fn test_parallel_search_performance() -> Result<()> {
     let embedder = Arc::new(LocalEmbedder::new(256));
-    let store = Arc::new(
-        FlatVectorStore::open(
-            std::env::temp_dir().join(format!("fva_test_perf_{}", std::process::id())),
-            embedder.dimensions(),
-        )
-        .unwrap(),
+    let dir = TempDir::new().expect("tempdir");
+    let store: Arc<dyn VectorStore> = Arc::new(
+        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
+            .await
+            .expect("open lancedb store"),
     );
 
     // Index the same set of chunks multiple times to simulate a larger codebase
@@ -293,7 +182,7 @@ fn test_parallel_search_performance() -> Result<()> {
         "  Indexing {} chunks for performance test",
         all_chunks.len()
     );
-    index_chunks(embedder.as_ref(), store.as_ref(), &all_chunks)?;
+    index_chunks(embedder.as_ref(), store.as_ref(), &all_chunks).await?;
 
     let stats = store.stats();
     println!(
@@ -317,7 +206,7 @@ fn test_parallel_search_performance() -> Result<()> {
         // warmup
         for q in &queries {
             let v = embedder.embed_one(q)?;
-            let _ = store.search(&v, 10)?;
+            let _ = store.search(&v, 10).await?;
         }
     }
 
@@ -326,7 +215,7 @@ fn test_parallel_search_performance() -> Result<()> {
         for q in &queries {
             let v = embedder.embed_one(q)?;
             let start = std::time::Instant::now();
-            let results = store.search(&v, 10)?;
+            let results = store.search(&v, 10).await?;
             let elapsed = start.elapsed().as_secs_f64() * 1000.0;
             total_time_ms += elapsed;
             iterations += 1;
@@ -350,13 +239,12 @@ fn test_parallel_search_performance() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_token_index_properly_built() -> Result<()> {
-    let (store, embedder) = test_store();
+#[tokio::test]
+async fn test_token_index_properly_built() -> Result<()> {
+    let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
 
-    // Verify the token index is built (internal detail: upsert triggers token indexing)
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks)?;
+    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     let stats = store.stats();
     assert_eq!(
@@ -368,7 +256,7 @@ fn test_token_index_properly_built() -> Result<()> {
     // Verify we can find code by symbol name via search
     let query = "validate_token";
     let query_vec = embedder.embed_one(query)?;
-    let results = store.search(&query_vec, 5)?;
+    let results = store.search(&query_vec, 5).await?;
 
     let found: Vec<&str> = results.iter().map(|h| h.symbol_name.as_str()).collect();
     println!("  Search for '{}' returned: {:?}", query, found);
@@ -380,13 +268,13 @@ fn test_token_index_properly_built() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn test_chunk_by_id_o1() -> Result<()> {
+#[tokio::test]
+async fn test_chunk_by_id_o1() -> Result<()> {
     let embedder = LocalEmbedder::new(256);
-    let store = FlatVectorStore::open(
-        std::env::temp_dir().join(format!("fva_test_byid_{}", std::process::id())),
-        embedder.dimensions(),
-    )?;
+    let dir = TempDir::new().expect("tempdir");
+    let store = LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
+        .await
+        .expect("open lancedb store");
 
     let chunks = make_chunks();
     let vectors: Vec<Vec<f32>> = chunks
@@ -397,7 +285,7 @@ fn test_chunk_by_id_o1() -> Result<()> {
                 .unwrap()
         })
         .collect();
-    store.upsert_chunks(&chunks, &vectors)?;
+    store.upsert_chunks(&chunks, &vectors).await?;
 
     // Verify the store works for multiple ops
     let stats = store.stats();

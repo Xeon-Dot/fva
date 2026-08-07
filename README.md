@@ -170,7 +170,7 @@ provider = "local"    # "local" (default) or "voyage"
 model = "voyage-code-3"
 
 [vector]
-backend = "flat"      # file-backed cosine search
+backend = "lancedb"    # "lancedb" (default, native LanceDB) | "lancedb-native" (alias)
 db_path = "vectors"
 
 [query]

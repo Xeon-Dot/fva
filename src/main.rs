@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("FVA starting — root: {}", root.display());
 
-    let engine = Arc::new(FvaEngine::new(config, root)?);
+    let engine = Arc::new(FvaEngine::new(config, root).await?);
 
     // Wait for FFF scan in background
     let fff_clone = engine.fff.clone();
@@ -202,23 +202,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command.unwrap_or(Commands::Serve) {
         Commands::Index => {
-            let count = engine.indexer.index_all()?;
+            let count = engine.indexer.index_all().await?;
             let ast = engine.indexer.stats();
             let vec = engine.vectors.stats();
             let g = engine.graph.stats();
             cli_output::index_done(count, &ast, &vec, &g);
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         Commands::Status => {
             if engine.indexer.stats().indexed_files == 0 {
-                let _ = engine.indexer.index_all();
+                let _ = engine.indexer.index_all().await;
             }
             let ast = engine.indexer.stats();
             let vec = engine.vectors.stats();
             let g = engine.graph.stats();
             cli_output::status(engine.fff.total_files(), &ast, &vec, &g, engine.embedder.name());
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         Commands::Bench {
@@ -229,7 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let _ = engine.fff.wait_for_scan(Duration::from_secs(120));
             if engine.indexer.stats().indexed_files == 0 {
-                let _ = engine.indexer.index_all();
+                let _ = engine.indexer.index_all().await;
             }
             let opts = fva::bench::BenchOptions {
                 iterations,
@@ -250,21 +250,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }),
                 json,
             };
-            let report = fva::bench::run(&engine, &opts);
+            let report = fva::bench::run(&engine, &opts).await;
             fva::bench::emit(&report, &opts);
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         Commands::Search { query, limit } => {
             if engine.indexer.stats().indexed_files == 0 {
-                let _ = engine.indexer.index_all();
+                let _ = engine.indexer.index_all().await;
             }
-            let result = engine.query.hybrid_search(&query, limit);
+            let result = engine.query.hybrid_search(&query, limit).await;
             cli_output::search_header(&query, result.hits.len());
             for (i, hit) in result.hits.iter().enumerate() {
                 cli_output::search_hit(i + 1, hit);
             }
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         Commands::Wiki { command } => {
@@ -330,7 +330,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cli_output::wiki_list(&mapped);
                 }
             }
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         Commands::Serve => {
@@ -342,7 +342,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tokio::spawn(async move {
                 tokio::signal::ctrl_c().await.ok();
                 tracing::info!("shutting down FVA...");
-                engine_shutdown.shutdown();
+                engine_shutdown.shutdown().await;
                 let _ = engine_shutdown
                     .indexer
                     .wait_for_index(Duration::from_secs(5));
@@ -356,7 +356,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("MCP server error: {e}"))?;
 
             service.waiting().await?;
-            engine.shutdown();
+            engine.shutdown().await;
         }
 
         _ => unreachable!(),

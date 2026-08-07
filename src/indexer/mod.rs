@@ -12,14 +12,14 @@ use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
-use self::chunker::chunk_file;
+use self::chunker::{chunk_file, CodeChunk};
 use self::parser::{AstParser, is_indexable};
 use self::store::{ChunkStore, IndexStats, safe_relative_path};
 use crate::config::IndexerConfig;
 use crate::embedding::Embedder;
 use crate::error::{FvaError, Result};
 use crate::graph::CallGraphStore;
-use crate::vector::{VectorStore, index_chunks};
+use crate::vector::VectorStore;
 
 /// Shared indexer state.
 #[derive(Clone)]
@@ -34,6 +34,9 @@ pub struct Indexer {
     vectors: Arc<dyn VectorStore>,
     graph: Arc<CallGraphStore>,
 }
+
+/// Sync phase result: one entry per indexed file, ready for the async commit phase.
+type ParsedFile = (String, blake3::Hash, Vec<CodeChunk>, Vec<Vec<f32>>);
 
 impl Indexer {
     pub fn new(
@@ -76,9 +79,9 @@ impl Indexer {
     }
 
     /// Full index scan of the project.
-    pub fn index_all(&self) -> Result<usize> {
+    pub async fn index_all(&self) -> Result<usize> {
         *self.scanning.write() = true;
-        let result = self.index_all_inner();
+        let result = self.index_all_inner().await;
         *self.scanning.write() = false;
         if result.is_ok() {
             let _ = self.vectors.persist();
@@ -87,20 +90,29 @@ impl Indexer {
         result
     }
 
-    fn index_all_inner(&self) -> Result<usize> {
+    async fn index_all_inner(&self) -> Result<usize> {
         let files = self.collect_files()?;
         tracing::info!("indexing {} source files", files.len());
 
-        let indexed: usize = files
+        // Phase 1 (rayon, sync, CPU-bound): read -> parse -> chunk -> embed
+        let parsed: Vec<ParsedFile> = files
             .par_iter()
-            .map(|file_path| match self.index_file(file_path) {
-                Ok(n) => n,
-                Err(e) => {
-                    tracing::warn!("failed to index {}: {e}", file_path.display());
-                    0
+            .filter_map(|f| {
+                match self.parse_and_embed(f) {
+                    Ok(Some(v)) => Some(v),
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("failed to index {}: {e}", f.display());
+                        None
+                    }
                 }
             })
-            .sum();
+            .collect();
+
+        // Phase 2 (async): per-file vector upserts, sequential
+        for (relative, hash, chunks, vectors) in &parsed {
+            self.commit_file(relative, hash, chunks, vectors).await;
+        }
 
         tracing::info!(
             "indexed {} files, {} chunks, {} symbols, {} vectors, {} graph edges",
@@ -111,13 +123,15 @@ impl Indexer {
             self.graph.stats().edges
         );
 
-        Ok(indexed)
+        Ok(parsed.iter().map(|(_, _, c, _)| c.len()).sum())
     }
 
-    /// Incrementally index a single file.
-    pub fn index_file(&self, file_path: &Path) -> Result<usize> {
+    fn parse_and_embed(
+        &self,
+        file_path: &Path,
+    ) -> Result<Option<ParsedFile>> {
         if !is_indexable(file_path) {
-            return Ok(0);
+            return Ok(None);
         }
 
         if self.sandbox && !file_path.starts_with(&self.root) {
@@ -134,39 +148,53 @@ impl Indexer {
 
         let source = match std::fs::read_to_string(file_path) {
             Ok(s) => s,
-            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Ok(0),
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => return Ok(None),
             Err(e) => return Err(e.into()),
         };
 
         let content_hash = blake3::hash(source.as_bytes());
         if !self.store.needs_reindex(&relative, &content_hash) {
-            return Ok(0);
+            return Ok(None);
         }
 
-        // Remove stale vector/graph data
-        let _ = self.vectors.remove_file(&relative);
-        let _ = self.graph.remove_file(&relative);
+        let chunks = {
+            let parser = self.parser.read();
+            chunk_file(
+                &parser,
+                file_path,
+                &relative,
+                &source,
+                self.config.max_file_size,
+            )?
+        };
+        if chunks.is_empty() {
+            return Ok(None);
+        }
+        let texts = crate::vector::chunk_texts(&chunks);
+        let vectors = self.embedder.embed(&texts)?;
+        Ok(Some((relative, content_hash, chunks, vectors)))
+    }
 
-        let parser = self.parser.read();
-        let chunks = chunk_file(
-            &parser,
-            file_path,
-            &relative,
-            &source,
-            self.config.max_file_size,
-        )?;
+    async fn commit_file(
+        &self,
+        relative: &str,
+        hash: &blake3::Hash,
+        chunks: &[CodeChunk],
+        vectors: &[Vec<f32>],
+    ) {
+        let _ = self.vectors.remove_file(relative).await;
+        self.store.upsert_file(relative, chunks.to_vec(), hash);
+        let _ = self.vectors.upsert_chunks(chunks, vectors).await;
+        let _ = self.graph.index_chunks(chunks);
+    }
 
-        let count = chunks.len();
-        self.store
-            .upsert_file(&relative, chunks.clone(), &content_hash);
-
-        // Phase 2: embed + vector index
-        let _ = index_chunks(self.embedder.as_ref(), self.vectors.as_ref(), &chunks);
-
-        // Phase 3: call graph
-        let _ = self.graph.index_chunks(&chunks);
-
-        Ok(count)
+    /// Incrementally index a single file.
+    pub async fn index_file(&self, file_path: &Path) -> Result<usize> {
+        let Some((relative, hash, chunks, vectors)) = self.parse_and_embed(file_path)? else {
+            return Ok(0);
+        };
+        self.commit_file(&relative, &hash, &chunks, &vectors).await;
+        Ok(chunks.len())
     }
 
     pub fn collect_files(&self) -> Result<Vec<PathBuf>> {
@@ -191,11 +219,11 @@ impl Indexer {
         Ok(files)
     }
 
-    /// Run initial index in background thread.
+    /// Run initial index in background task.
     pub fn spawn_background_index(self: &Arc<Self>) {
         let indexer = Arc::clone(self);
-        std::thread::spawn(move || {
-            if let Err(e) = indexer.index_all() {
+        tokio::spawn(async move {
+            if let Err(e) = indexer.index_all().await {
                 tracing::error!("background index failed: {e}");
             }
         });

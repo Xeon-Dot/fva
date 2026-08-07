@@ -28,12 +28,12 @@ pub struct FvaEngine {
 }
 
 impl FvaEngine {
-    pub fn new(config: Config, root: PathBuf) -> Result<Self> {
+    pub async fn new(config: Config, root: PathBuf) -> Result<Self> {
         let data_dir = config.resolve_data_dir(&root);
 
         let fff = FffEngine::new(&root, &config.fff)?;
         let embedder = build_embedder(&config.embedding)?;
-        let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions())?;
+        let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions()).await?;
         let graph = Arc::new(CallGraphStore::open(&data_dir)?);
 
         let indexer = Arc::new(Indexer::new(
@@ -73,7 +73,7 @@ impl FvaEngine {
         })
     }
 
-    pub fn shutdown(&self) {
+    pub async fn shutdown(&self) {
         let _ = self.vectors.persist();
         let _ = self.graph.persist();
         let _ = self.wiki.persist();

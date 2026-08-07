@@ -227,7 +227,7 @@ fn default_dimensions() -> usize {
     1024
 }
 fn default_vector_backend() -> String {
-    "flat".to_string()
+    "lancedb".to_string()
 }
 fn default_vector_db() -> String {
     "vectors".to_string()

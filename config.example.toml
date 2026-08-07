@@ -44,8 +44,8 @@ model = "voyage-code-3"
 dimensions = 1024
 
 [vector]
-# Vector store backend: "flat" (default) | "lancedb-native" (requires --features lancedb)
-backend = "flat"
+# Vector store backend: "lancedb" (default, native LanceDB) | "lancedb-native" (alias)
+backend = "lancedb"
 # Database path
 db_path = "vectors"
 

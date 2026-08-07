@@ -53,13 +53,16 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls", "blocking"], def
 # Allocator (optional performance boost)
 mimalloc = { version = "0.1", optional = true }
 
-# LanceDB (optional — heavy dependency)
+# LanceDB (native vector store — the only vector backend)
 lancedb = { version = "0.30", optional = true }
-arrow-array = { version = "55", optional = true }
-arrow-schema = { version = "55", optional = true }
+arrow-array = { version = "58", optional = true }
+arrow-schema = { version = "58", optional = true }
+
+# Async stream utilities for LanceDB query results
+futures = "0.3"
 
 [features]
-default = ["mimalloc"]
+default = ["mimalloc", "lancedb"]
 mimalloc = ["dep:mimalloc"]
 lancedb = ["dep:lancedb", "dep:arrow-array", "dep:arrow-schema"]
 

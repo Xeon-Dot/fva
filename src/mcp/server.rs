@@ -327,13 +327,17 @@ impl FvaServer {
         name = "semantic_search",
         description = "Natural language semantic search over code chunks using embeddings. Best for conceptual queries like 'authentication logic' or 'error handling patterns'."
     )]
-    fn semantic_search(
+    async fn semantic_search(
         &self,
         Parameters(params): Parameters<SemanticSearchParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, _offset) =
             resolve_pagination(params.max_results, None, self.default_max_results);
-        let result = self.engine.query.semantic_search(&params.query, limit);
+        let result = self
+            .engine
+            .query
+            .semantic_search(&params.query, limit)
+            .await;
         Ok(CallToolResult::success(vec![Content::text(
             format_hybrid_result(&result),
         )]))
@@ -343,13 +347,13 @@ impl FvaServer {
         name = "hybrid_search",
         description = "BEST default search. Combines FFF file search + vector semantic search + call graph traversal. Use for any codebase exploration task."
     )]
-    fn hybrid_search(
+    async fn hybrid_search(
         &self,
         Parameters(params): Parameters<HybridSearchParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, _offset) =
             resolve_pagination(params.max_results, None, self.default_max_results);
-        let mut result = self.engine.query.hybrid_search(&params.query, limit);
+        let mut result = self.engine.query.hybrid_search(&params.query, limit).await;
 
         if let Some(path) = &params.path {
             result.hits.retain(|h| h.relative_path.contains(path));
@@ -409,13 +413,13 @@ impl FvaServer {
         name = "get_smart_context",
         description = "Build token-efficient smart context for a task. Combines hybrid search results + call graph + file context. Best for understanding code before making changes."
     )]
-    fn get_smart_context(
+    async fn get_smart_context(
         &self,
         Parameters(params): Parameters<GetSmartContextParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, _offset) =
             resolve_pagination(params.max_results, None, self.default_max_results);
-        let search = self.engine.query.hybrid_search(&params.query, limit);
+        let search = self.engine.query.hybrid_search(&params.query, limit).await;
         let ctx = self
             .engine
             .context

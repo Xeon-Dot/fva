@@ -9,12 +9,14 @@ use fva::indexer::parser::is_indexable;
 use fva::vector::build_vector_store;
 use ignore::WalkBuilder;
 
-fn test_indexer() -> Indexer {
+async fn test_indexer() -> Indexer {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let config = Config::default();
     let embedder = build_embedder(&config.embedding).unwrap();
     let data_dir = root.join(".fva-test");
-    let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions()).unwrap();
+    let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions())
+        .await
+        .unwrap();
     let graph = Arc::new(CallGraphStore::open(&data_dir).unwrap());
 
     Indexer::new(
@@ -46,10 +48,10 @@ fn ignore_walk_finds_rust_files() {
     assert!(!rs_files.is_empty(), "ignore walk should find .rs files");
 }
 
-#[test]
-fn indexer_finds_rust_sources() {
-    let indexer = test_indexer();
-    let count = indexer.index_all().expect("index_all should succeed");
+#[tokio::test(flavor = "multi_thread")]
+async fn indexer_finds_rust_sources() {
+    let indexer = test_indexer().await;
+    let count = indexer.index_all().await.expect("index_all should succeed");
     let stats = indexer.stats();
 
     assert!(

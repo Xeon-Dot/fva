@@ -2,7 +2,9 @@
 
 mod report;
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -52,14 +54,15 @@ impl Default for BenchOptions {
 }
 
 /// Run the full benchmark suite against an initialized engine.
-pub fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
+pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     let started = Instant::now();
     let mut suite = BenchSuite::new(engine.root.display().to_string());
+    let engine = Arc::clone(engine);
 
     // Ensure index is warm
     if engine.indexer.stats().indexed_files == 0 {
         tracing::info!("warming index for benchmark...");
-        let _ = engine.indexer.index_all();
+        let _ = engine.indexer.index_all().await;
     }
 
     // Wait for FFF scan
@@ -86,19 +89,25 @@ pub fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         "find_files",
         opts,
         || {
-            let _ = engine.fff.find_files("indexer", 0, 20).expect("find_files");
+            let engine = engine.clone();
+            Box::pin(async move {
+                let _ = engine.fff.find_files("indexer", 0, 20).expect("find_files");
+            })
         },
         target_ms("find_files"),
-    ));
+    ).await);
 
     suite.add(bench_op(
         "grep",
         opts,
         || {
-            let _ = engine.fff.grep("Indexer", 0, 20).expect("grep");
+            let engine = engine.clone();
+            Box::pin(async move {
+                let _ = engine.fff.grep("Indexer", 0, 20).expect("grep");
+            })
         },
         target_ms("grep"),
-    ));
+    ).await);
 
     // --- AST chunk (single file) ---
     let sample_file = find_largest_rust_file(engine.root.as_path())
@@ -113,30 +122,42 @@ pub fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
             &format!("vector_search:{q}"),
             opts,
             || {
-                if let Ok(vec) = engine.embedder.embed_one(&q) {
-                    let _ = engine.vectors.search(&vec, 20).expect("vector search");
-                }
+                let q = q.clone();
+                let engine = engine.clone();
+                Box::pin(async move {
+                    if let Ok(vec) = engine.embedder.embed_one(&q) {
+                        let _ = engine.vectors.search(&vec, 20).await.expect("vector search");
+                    }
+                })
             },
             target_ms("vector_search"),
-        ));
+        ).await);
 
         suite.add(bench_op(
             &format!("semantic_search:{q}"),
             opts,
             || {
-                let _ = engine.query.semantic_search(&q, 10);
+                let q = q.clone();
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let _ = engine.query.semantic_search(&q, 10).await;
+                })
             },
             target_ms("semantic_search"),
-        ));
+        ).await);
 
         suite.add(bench_op(
             &format!("hybrid_search:{q}"),
             opts,
             || {
-                let _ = engine.query.hybrid_search(&q, 10);
+                let q = q.clone();
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let _ = engine.query.hybrid_search(&q, 10).await;
+                })
             },
             target_ms("hybrid_search"),
-        ));
+        ).await);
     }
 
     // --- Graph / context ---
@@ -152,11 +173,15 @@ pub fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         "get_call_graph",
         opts,
         || {
-            let _ = engine.graph.callers(&symbol, 1);
-            let _ = engine.graph.callees(&symbol, 1);
+            let symbol = symbol.clone();
+            let engine = engine.clone();
+            Box::pin(async move {
+                let _ = engine.graph.callers(&symbol, 1);
+                let _ = engine.graph.callees(&symbol, 1);
+            })
         },
         target_ms("get_call_graph"),
-    ));
+    ).await);
 
     let query = opts
         .queries
@@ -167,31 +192,40 @@ pub fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         "get_smart_context",
         opts,
         || {
-            let result = engine.query.hybrid_search(&query, 5);
-            let _ = engine.context.build(&query, None, &result);
+            let query = query.clone();
+            let engine = engine.clone();
+            Box::pin(async move {
+                let result = engine.query.hybrid_search(&query, 5).await;
+                let _ = engine.context.build(&query, None, &result);
+            })
         },
         target_ms("get_smart_context"),
-    ));
+    ).await);
 
     // --- Full re-index (cold hash bypass via temp re-chunk) ---
-    suite.add(bench_full_index(engine, opts));
+    suite.add(bench_full_index(&engine, opts).await);
 
     suite.set_duration(started.elapsed().as_secs_f64() * 1000.0);
     suite.finish()
 }
 
-fn bench_op<F>(name: &str, opts: &BenchOptions, mut f: F, target_ms: Option<f64>) -> BenchResult
+async fn bench_op<F>(
+    name: &str,
+    opts: &BenchOptions,
+    mut f: F,
+    target_ms: Option<f64>,
+) -> BenchResult
 where
-    F: FnMut(),
+    F: FnMut() -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
 {
     for _ in 0..opts.warmup {
-        f();
+        f().await;
     }
 
     let mut samples = Vec::with_capacity(opts.iterations);
     for _ in 0..opts.iterations {
         let start = Instant::now();
-        f();
+        f().await;
         samples.push(start.elapsed().as_secs_f64() * 1000.0);
     }
 
@@ -226,7 +260,7 @@ fn bench_ast_chunk(opts: &BenchOptions, file: &Path) -> BenchResult {
     result
 }
 
-fn bench_full_index(engine: &Arc<FvaEngine>, _opts: &BenchOptions) -> BenchResult {
+async fn bench_full_index(engine: &Arc<FvaEngine>, _opts: &BenchOptions) -> BenchResult {
     let files = engine.indexer.collect_files().unwrap_or_default();
     let file_count = files.len();
 
@@ -234,7 +268,7 @@ fn bench_full_index(engine: &Arc<FvaEngine>, _opts: &BenchOptions) -> BenchResul
     engine.indexer.store().invalidate_hashes();
 
     let start = Instant::now();
-    let _ = engine.indexer.index_all();
+    let _ = engine.indexer.index_all().await;
     let elapsed = start.elapsed().as_secs_f64() * 1000.0;
 
     let mut result = BenchResult::from_samples("full_index", &[elapsed], target_ms("full_index"));
