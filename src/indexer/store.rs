@@ -30,7 +30,11 @@ struct ChunkStoreInner {
 }
 
 fn make_search_blob(chunk: &CodeChunk) -> String {
-    format!("{} {} {}", chunk.symbol_name, chunk.relative_path, chunk.content).to_lowercase()
+    format!(
+        "{} {} {}",
+        chunk.symbol_name, chunk.relative_path, chunk.content
+    )
+    .to_lowercase()
 }
 
 fn remove_chunk_from_indices(inner: &mut ChunkStoreInner, chunk: &CodeChunk) {
@@ -108,7 +112,9 @@ impl ChunkStore {
         inner
             .chunks_by_file
             .insert(relative_path.to_string(), chunks);
-        inner.file_hashes.insert(relative_path.to_string(), hash_str);
+        inner
+            .file_hashes
+            .insert(relative_path.to_string(), hash_str);
         inner.file_meta.insert(relative_path.to_string(), meta);
     }
 

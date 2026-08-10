@@ -217,7 +217,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ast = engine.indexer.stats();
             let vec = engine.vectors.stats();
             let g = engine.graph.stats();
-            cli_output::status(engine.fff.total_files(), &ast, &vec, &g, engine.embedder.name());
+            cli_output::status(
+                engine.fff.total_files(),
+                &ast,
+                &vec,
+                &g,
+                engine.embedder.name(),
+            );
             engine.shutdown().await;
         }
 
@@ -295,37 +301,61 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 WikiCommands::Read { slug } => {
                     let entry = engine.wiki.read(&slug)?;
-                    cli_output::wiki_read(&entry.slug, &entry.tags, &entry.created, &entry.updated, &entry.content);
+                    cli_output::wiki_read(
+                        &entry.slug,
+                        &entry.tags,
+                        &entry.created,
+                        &entry.updated,
+                        &entry.content,
+                    );
                 }
                 WikiCommands::Delete { slug } => {
                     engine.wiki.delete(&slug)?;
                     cli_output::wiki_deleted(&slug);
                 }
                 WikiCommands::Search { query, tags, limit } => {
-                    let tags: Option<Vec<String>> = tags.map(|t| {
-                        t.split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect()
-                    }).filter(|v: &Vec<String>| !v.is_empty());
+                    let tags: Option<Vec<String>> = tags
+                        .map(|t| {
+                            t.split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect()
+                        })
+                        .filter(|v: &Vec<String>| !v.is_empty());
                     let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
                     let mapped: Vec<(String, Vec<String>, String, f64)> = results
                         .iter()
-                        .map(|(e, score)| (e.title.clone(), e.tags.clone(), e.content.clone(), *score as f64))
+                        .map(|(e, score)| {
+                            (
+                                e.title.clone(),
+                                e.tags.clone(),
+                                e.content.clone(),
+                                *score as f64,
+                            )
+                        })
                         .collect();
                     cli_output::wiki_search_results(&query, &mapped);
                 }
                 WikiCommands::List { tags } => {
-                    let tags: Option<Vec<String>> = tags.map(|t| {
-                        t.split(',')
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty())
-                            .collect()
-                    }).filter(|v: &Vec<String>| !v.is_empty());
+                    let tags: Option<Vec<String>> = tags
+                        .map(|t| {
+                            t.split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect()
+                        })
+                        .filter(|v: &Vec<String>| !v.is_empty());
                     let entries = engine.wiki.list(tags.as_deref());
                     let mapped: Vec<(String, String, Vec<String>, String)> = entries
                         .iter()
-                        .map(|e| (e.slug.clone(), e.title.clone(), e.tags.clone(), e.updated.clone()))
+                        .map(|e| {
+                            (
+                                e.slug.clone(),
+                                e.title.clone(),
+                                e.tags.clone(),
+                                e.updated.clone(),
+                            )
+                        })
                         .collect();
                     cli_output::wiki_list(&mapped);
                 }

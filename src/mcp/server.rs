@@ -13,33 +13,44 @@ use crate::query::context::ContextBuilder;
 use crate::util::resolve_pagination;
 
 pub const MCP_INSTRUCTIONS: &str = concat!(
-    "FVA (FFF · Vector · AST) is a hybrid codebase intelligence engine.\n",
+    "**Language:** Please ask questions in English.\n",
     "\n",
-    "## Tools (use in this order)\n",
+    "FVA (FFF · Vector · AST) — hybrid codebase intelligence for AI agents.\n",
+    "Fuses fuzzy file search (FFF), vector semantic search, AST chunking (Tree-sitter, 306+ languages), and call graphs into one engine.\n",
     "\n",
-    "1. **hybrid_search** — BEST default. Combines file search + semantic + call graph.\n",
-    "2. **semantic_search** — Natural language / concept search via embeddings.\n",
-    "3. **grep** — Exact identifier search in file contents.\n",
-    "4. **find_files** — Fuzzy file path search.\n",
-    "5. **get_symbol_info** / **get_chunks** — Full function/class bodies (AST-aware).\n",
-    "6. **get_call_graph** — Callers and callees of a symbol.\n",
-    "7. **get_smart_context** — Token-efficient combined context for a task.\n",
-    "8. **index_status** — Check indexing progress.\n",
+    "## When to use FVA\n",
     "\n",
-    "## Wiki (knowledge base)\n",
+    "- Any codebase exploration, search, or comprehension task — use FVA first, before raw grep/read/find.\n",
+    "- Prefer AST chunks (`get_chunks`, `get_symbol_info`) over reading entire files.\n",
+    "- Prefer `hybrid_search` / `get_smart_context` over repeated grep+read loops.\n",
     "\n",
-    "9. **wiki_write** — Create/update a knowledge entry. **Use freely — save anything useful** (slug, title, content, tags).\n",
-    "10. **wiki_read** — Read a wiki entry by slug.\n",
-    "11. **wiki_delete** — Delete a wiki entry.\n",
-    "12. **wiki_search** — Semantic search over wiki entries with tag filtering. Use to recall saved knowledge before starting a task.\n",
-    "13. **wiki_list** — List all wiki entries, optionally filtered by tags.\n",
+    "## Search tools — priority order\n",
+    "\n",
+    "1. **hybrid_search** — BEST default. Fuses FFF file search + vector semantic search + call graph. Use for \"where is X?\", \"how does Y work?\", or any open-ended exploration. Supports `query`, `path` (substring filter), `maxResults`.\n",
+    "2. **get_smart_context** — Task-oriented, token-budget context. Runs hybrid search + call graph + file context and formats a compact answer ideal before making edits. Params: `query`, `path` (file hint), `maxResults`.\n",
+    "3. **semantic_search** — Pure embedding search over AST chunks. Best for conceptual queries (\"auth middleware\", \"retry logic\", \"error handling patterns\") when keyword search fails. Params: `query`, `maxResults`.\n",
+    "4. **get_symbol_info** — Exact symbol lookup by name. Returns full AST chunks with source code. Use when you know the symbol name. Params: `symbol`, `maxResults`.\n",
+    "5. **get_chunks** — Browse AST chunks (functions, classes, methods) by file or by keyword. Provide `path` OR `query`. Params: `path`, `query`, `maxResults`, `offset`, `includeContent` (default true).\n",
+    "6. **get_call_graph** — Callers and callees of a function/symbol with dependency edges. Params: `function`, `depth` (default 1).\n",
+    "7. **grep** — Content search for bare identifiers. FFF-powered with definition expansion and fuzzy fallback. Use `MyHandler`, not `fn MyHandler`. Params: `query` (alias `pattern`), `maxResults`, `offset`.\n",
+    "8. **find_files** — Fuzzy file/path search, frecency-ranked and git-aware. Use to discover which files exist. Params: `query` (alias `pattern`), `maxResults`, `offset`.\n",
+    "9. **index_status** — Indexing health check (no params). Returns FFF / AST / vectors / call graph / wiki stats. Call when results are empty or stale.\n",
+    "\n",
+    "## Wiki — persistent knowledge base (use proactively)\n",
+    "\n",
+    "- **wiki_write** — Create/update an entry (`slug`, `title`, `content` Markdown, `tags` comma-separated). Save anything useful: architecture, gotchas, conventions, patterns, build/dep notes. Knowledge not saved is knowledge lost.\n",
+    "- **wiki_search** — Semantic search over wiki entries. Call before starting a task to recall prior knowledge. Params: `query`, `tags`, `maxResults`.\n",
+    "- **wiki_read** — Read one entry by `slug` (full Markdown + metadata).\n",
+    "- **wiki_list** — List all entries, optionally filtered by `tags` (comma-separated).\n",
+    "- **wiki_delete** — Delete an entry by `slug`.\n",
     "\n",
     "## Rules\n",
     "\n",
-    "- Prefer **hybrid_search** or **get_smart_context** over repeated grep+read cycles.\n",
-    "- Grep bare identifiers only: 'MyHandler', not 'fn MyHandler'.\n",
-    "- AST chunks preserve syntactic integrity — use instead of raw file reads.\n",
-    "- Use **wiki_write** to persist any useful information — architecture, gotchas, conventions, patterns, trivia. Knowledge not saved is knowledge lost.\n",
+    "- Start with `hybrid_search` or `get_smart_context`; fall back to `grep`/`find_files` only when FVA is unavailable or returns nothing.\n",
+    "- Grep bare identifiers only: `MyHandler` not `fn MyHandler` — FFF expands definitions automatically.\n",
+    "- Scope with `path` on `hybrid_search` / `get_smart_context` when the target file or directory is known.\n",
+    "- Paginate with `maxResults` / `offset`; when output contains `offset: N`, pass `offset: N` on the next call.\n",
+    "- Use `wiki_write` liberally during any task; use `wiki_search` at task start.\n",
 );
 
 fn empty_result(msg: String) -> CallToolResult {
@@ -178,7 +189,7 @@ impl FvaServer {
 impl FvaServer {
     #[tool(
         name = "find_files",
-        description = "Fuzzy file search by path/name. Frecency-ranked, git-aware. Use when exploring which files exist."
+        description = "Discover files by fuzzy path/name search. Frecency-ranked and git-aware (respects .gitignore). Use when you know part of a filename or want to explore which files exist. Params: query (alias: pattern), maxResults, offset."
     )]
     fn find_files(
         &self,
@@ -220,7 +231,7 @@ impl FvaServer {
 
     #[tool(
         name = "grep",
-        description = "Search file contents for bare identifiers. FFF-powered with definition expansion and fuzzy fallback."
+        description = "Search file contents for bare identifiers (e.g. MyHandler, not \"fn MyHandler\"). FFF-powered with definition expansion and fuzzy fallback. Best for exact symbol/text lookup when you know the identifier. Params: query (alias: pattern), maxResults, offset."
     )]
     fn grep(
         &self,
@@ -259,7 +270,7 @@ impl FvaServer {
 
     #[tool(
         name = "get_chunks",
-        description = "Get AST-aware code chunks (functions, classes, methods). Provide 'path' or 'query'."
+        description = "Browse AST-aware code chunks (functions, classes, methods) with full source. Provide 'path' (file path) OR 'query' (keyword) — at least one required. Use to explore file structure or find chunks by keyword. Params: path, query, maxResults, offset, includeContent (default true)."
     )]
     fn get_chunks(
         &self,
@@ -300,7 +311,7 @@ impl FvaServer {
 
     #[tool(
         name = "get_symbol_info",
-        description = "Look up a symbol by name. Returns full AST chunks with source code."
+        description = "Look up a symbol by exact name and return full AST chunks with source code (functions, structs, classes, methods). Use when you know the symbol name and need its definition and context. Params: symbol (required), maxResults."
     )]
     fn get_symbol_info(
         &self,
@@ -325,7 +336,7 @@ impl FvaServer {
 
     #[tool(
         name = "semantic_search",
-        description = "Natural language semantic search over code chunks using embeddings. Best for conceptual queries like 'authentication logic' or 'error handling patterns'."
+        description = "Conceptual search over code chunks via vector embeddings. Best for natural-language queries like \"authentication logic\" or \"error handling patterns\" when keyword search is insufficient. Uses the configured embedder (local hash or Voyage). Params: query (required), maxResults."
     )]
     async fn semantic_search(
         &self,
@@ -345,7 +356,7 @@ impl FvaServer {
 
     #[tool(
         name = "hybrid_search",
-        description = "BEST default search. Combines FFF file search + vector semantic search + call graph traversal. Use for any codebase exploration task."
+        description = "BEST default for any codebase exploration. Fuses FFF file search + vector semantic search + call graph traversal (3-stage fusion). Use for \"where is X?\", \"how does Y work?\", or any open-ended question. Stronger than any single signal. Params: query (required), path (substring filter), maxResults."
     )]
     async fn hybrid_search(
         &self,
@@ -366,7 +377,7 @@ impl FvaServer {
 
     #[tool(
         name = "get_call_graph",
-        description = "Get callers and callees of a function/symbol. Shows dependency relationships."
+        description = "Show callers and callees of a function/symbol with file locations and dependency edges. Use to trace who calls this function and what it calls. Supports multi-hop traversal. Params: function (required, symbol name), depth (default 1)."
     )]
     fn get_call_graph(
         &self,
@@ -411,7 +422,7 @@ impl FvaServer {
 
     #[tool(
         name = "get_smart_context",
-        description = "Build token-efficient smart context for a task. Combines hybrid search results + call graph + file context. Best for understanding code before making changes."
+        description = "Build token-efficient, task-oriented context for making changes. Combines hybrid search + call graph + file context into a compact, ranked answer. Call this before editing code to understand what to change. Params: query (required, task description), path (file hint), maxResults."
     )]
     async fn get_smart_context(
         &self,
@@ -431,7 +442,7 @@ impl FvaServer {
 
     #[tool(
         name = "index_status",
-        description = "Check FVA indexing status: FFF, AST chunks, vectors, call graph, wiki."
+        description = "Check indexing health and statistics (no params). Returns FFF file count, AST indexed files/chunks/symbols, vector count/dimensions/embedder, call graph nodes/edges, and wiki entry count. Use when searches are empty/stale or to confirm indexing progress."
     )]
     fn index_status(&self) -> Result<CallToolResult, ErrorData> {
         let stats = self.engine.indexer.stats();
@@ -473,7 +484,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_write",
-        description = "Create or update a wiki knowledge entry. Use freely — save anything useful (decisions, tricks, gotchas, context). Markdown content with automatic semantic indexing."
+        description = "Create or update a wiki knowledge entry (persistent, Markdown, auto-indexed for semantic search). Use freely and proactively — save architecture, decisions, gotchas, conventions, patterns, build/dep notes, or any context worth remembering. Knowledge not saved is knowledge lost. Params: slug (unique id), title, content (Markdown), tags (comma-separated)."
     )]
     fn wiki_write(
         &self,
@@ -501,7 +512,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_read",
-        description = "Read a wiki knowledge entry by slug. Returns full markdown content with metadata."
+        description = "Read a wiki knowledge entry by slug. Returns full Markdown content with metadata (title, tags, created/updated timestamps). Use when you know the entry id. Params: slug (required)."
     )]
     fn wiki_read(
         &self,
@@ -527,7 +538,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_delete",
-        description = "Delete a wiki knowledge entry by slug."
+        description = "Delete a wiki knowledge entry by slug. Irreversible. Use to remove outdated or incorrect entries. Params: slug (required)."
     )]
     fn wiki_delete(
         &self,
@@ -546,7 +557,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_search",
-        description = "Semantic search over wiki knowledge entries. Supports tag filtering. Use to recall saved knowledge before starting a task. Returns matching entries with content."
+        description = "Semantic search over wiki knowledge entries with tag filtering. Use at task start to recall prior decisions, patterns, and gotchas. Returns matching entries with content previews and relevance scores. Params: query (required), tags (comma-separated filter), maxResults."
     )]
     fn wiki_search(
         &self,
@@ -554,12 +565,15 @@ impl FvaServer {
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, _offset) =
             resolve_pagination(params.max_results, None, self.default_max_results);
-        let tags: Option<Vec<String>> = params.tags.map(|t| {
-            t.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        }).filter(|v: &Vec<String>| !v.is_empty());
+        let tags: Option<Vec<String>> = params
+            .tags
+            .map(|t| {
+                t.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .filter(|v: &Vec<String>| !v.is_empty());
 
         let results = self
             .engine
@@ -574,7 +588,11 @@ impl FvaServer {
             )));
         }
 
-        let mut lines = vec![format!("{} wiki results for '{}'", results.len(), params.query)];
+        let mut lines = vec![format!(
+            "{} wiki results for '{}'",
+            results.len(),
+            params.query
+        )];
         for (entry, score) in &results {
             let tags = if entry.tags.is_empty() {
                 String::new()
@@ -585,7 +603,12 @@ impl FvaServer {
                 "\n### {}{} (score={:.3}, updated={})",
                 entry.title, tags, score, entry.updated
             ));
-            let preview: String = entry.content.lines().take(10).collect::<Vec<_>>().join("\n");
+            let preview: String = entry
+                .content
+                .lines()
+                .take(10)
+                .collect::<Vec<_>>()
+                .join("\n");
             lines.push(preview);
         }
 
@@ -596,18 +619,21 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_list",
-        description = "List all wiki knowledge entries. Supports tag filtering. Returns slug, title, tags, and last updated."
+        description = "List all wiki knowledge entries with slug, title, tags, and last-updated timestamp. Supports tag filtering to browse by topic. Use to discover what knowledge is already saved. Params: tags (optional, comma-separated filter)."
     )]
     fn wiki_list(
         &self,
         Parameters(params): Parameters<WikiListParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tags: Option<Vec<String>> = params.tags.map(|t| {
-            t.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        }).filter(|v: &Vec<String>| !v.is_empty());
+        let tags: Option<Vec<String>> = params
+            .tags
+            .map(|t| {
+                t.split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .filter(|v: &Vec<String>| !v.is_empty());
 
         let entries = self.engine.wiki.list(tags.as_deref());
 

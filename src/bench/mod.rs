@@ -85,29 +85,35 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     });
 
     // --- FFF benchmarks ---
-    suite.add(bench_op(
-        "find_files",
-        opts,
-        || {
-            let engine = engine.clone();
-            Box::pin(async move {
-                let _ = engine.fff.find_files("indexer", 0, 20).expect("find_files");
-            })
-        },
-        target_ms("find_files"),
-    ).await);
+    suite.add(
+        bench_op(
+            "find_files",
+            opts,
+            || {
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let _ = engine.fff.find_files("indexer", 0, 20).expect("find_files");
+                })
+            },
+            target_ms("find_files"),
+        )
+        .await,
+    );
 
-    suite.add(bench_op(
-        "grep",
-        opts,
-        || {
-            let engine = engine.clone();
-            Box::pin(async move {
-                let _ = engine.fff.grep("Indexer", 0, 20).expect("grep");
-            })
-        },
-        target_ms("grep"),
-    ).await);
+    suite.add(
+        bench_op(
+            "grep",
+            opts,
+            || {
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let _ = engine.fff.grep("Indexer", 0, 20).expect("grep");
+                })
+            },
+            target_ms("grep"),
+        )
+        .await,
+    );
 
     // --- AST chunk (single file) ---
     let sample_file = find_largest_rust_file(engine.root.as_path())
@@ -118,46 +124,59 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     for query in &opts.queries {
         let q = query.clone();
 
-        suite.add(bench_op(
-            &format!("vector_search:{q}"),
-            opts,
-            || {
-                let q = q.clone();
-                let engine = engine.clone();
-                Box::pin(async move {
-                    if let Ok(vec) = engine.embedder.embed_one(&q) {
-                        let _ = engine.vectors.search(&vec, 20).await.expect("vector search");
-                    }
-                })
-            },
-            target_ms("vector_search"),
-        ).await);
+        suite.add(
+            bench_op(
+                &format!("vector_search:{q}"),
+                opts,
+                || {
+                    let q = q.clone();
+                    let engine = engine.clone();
+                    Box::pin(async move {
+                        if let Ok(vec) = engine.embedder.embed_one(&q) {
+                            let _ = engine
+                                .vectors
+                                .search(&vec, 20)
+                                .await
+                                .expect("vector search");
+                        }
+                    })
+                },
+                target_ms("vector_search"),
+            )
+            .await,
+        );
 
-        suite.add(bench_op(
-            &format!("semantic_search:{q}"),
-            opts,
-            || {
-                let q = q.clone();
-                let engine = engine.clone();
-                Box::pin(async move {
-                    let _ = engine.query.semantic_search(&q, 10).await;
-                })
-            },
-            target_ms("semantic_search"),
-        ).await);
+        suite.add(
+            bench_op(
+                &format!("semantic_search:{q}"),
+                opts,
+                || {
+                    let q = q.clone();
+                    let engine = engine.clone();
+                    Box::pin(async move {
+                        let _ = engine.query.semantic_search(&q, 10).await;
+                    })
+                },
+                target_ms("semantic_search"),
+            )
+            .await,
+        );
 
-        suite.add(bench_op(
-            &format!("hybrid_search:{q}"),
-            opts,
-            || {
-                let q = q.clone();
-                let engine = engine.clone();
-                Box::pin(async move {
-                    let _ = engine.query.hybrid_search(&q, 10).await;
-                })
-            },
-            target_ms("hybrid_search"),
-        ).await);
+        suite.add(
+            bench_op(
+                &format!("hybrid_search:{q}"),
+                opts,
+                || {
+                    let q = q.clone();
+                    let engine = engine.clone();
+                    Box::pin(async move {
+                        let _ = engine.query.hybrid_search(&q, 10).await;
+                    })
+                },
+                target_ms("hybrid_search"),
+            )
+            .await,
+        );
     }
 
     // --- Graph / context ---
@@ -169,38 +188,44 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         .map(|c| c.symbol_name.clone())
         .unwrap_or_else(|| "main".into());
 
-    suite.add(bench_op(
-        "get_call_graph",
-        opts,
-        || {
-            let symbol = symbol.clone();
-            let engine = engine.clone();
-            Box::pin(async move {
-                let _ = engine.graph.callers(&symbol, 1);
-                let _ = engine.graph.callees(&symbol, 1);
-            })
-        },
-        target_ms("get_call_graph"),
-    ).await);
+    suite.add(
+        bench_op(
+            "get_call_graph",
+            opts,
+            || {
+                let symbol = symbol.clone();
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let _ = engine.graph.callers(&symbol, 1);
+                    let _ = engine.graph.callees(&symbol, 1);
+                })
+            },
+            target_ms("get_call_graph"),
+        )
+        .await,
+    );
 
     let query = opts
         .queries
         .first()
         .cloned()
         .unwrap_or_else(|| "main".into());
-    suite.add(bench_op(
-        "get_smart_context",
-        opts,
-        || {
-            let query = query.clone();
-            let engine = engine.clone();
-            Box::pin(async move {
-                let result = engine.query.hybrid_search(&query, 5).await;
-                let _ = engine.context.build(&query, None, &result);
-            })
-        },
-        target_ms("get_smart_context"),
-    ).await);
+    suite.add(
+        bench_op(
+            "get_smart_context",
+            opts,
+            || {
+                let query = query.clone();
+                let engine = engine.clone();
+                Box::pin(async move {
+                    let result = engine.query.hybrid_search(&query, 5).await;
+                    let _ = engine.context.build(&query, None, &result);
+                })
+            },
+            target_ms("get_smart_context"),
+        )
+        .await,
+    );
 
     // --- Full re-index (cold hash bypass via temp re-chunk) ---
     suite.add(bench_full_index(&engine, opts).await);
@@ -428,7 +453,11 @@ fn print_table(report: &BenchReport) {
         report.duration_total_ms,
         style(pass).green(),
         total,
-        if fail > 0 { style(fail).red().to_string() } else { style(fail).to_string() }
+        if fail > 0 {
+            style(fail).red().to_string()
+        } else {
+            style(fail).to_string()
+        }
     );
     println!("+{:-<W$}+", "", W = W);
 }

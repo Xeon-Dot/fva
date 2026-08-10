@@ -97,10 +97,7 @@ impl WikiStore {
 
         entries.retain(|e| on_disk.contains(&e.slug));
 
-        let missing: Vec<String> = on_disk
-            .difference(&indexed)
-            .cloned()
-            .collect();
+        let missing: Vec<String> = on_disk.difference(&indexed).cloned().collect();
 
         if !missing.is_empty() {
             drop(entries);
@@ -115,7 +112,12 @@ impl WikiStore {
     }
 
     fn index_entry(&self, entry: &WikiEntry) -> Result<()> {
-        let text = format!("{} {}\n{}", entry.title, entry.tags.join(" "), entry.content);
+        let text = format!(
+            "{} {}\n{}",
+            entry.title,
+            entry.tags.join(" "),
+            entry.content
+        );
         let vector = self.embedder.embed_one(&text)?;
 
         let mut entries = self.entries.write();
@@ -193,9 +195,7 @@ impl WikiStore {
         let mut scored: Vec<(f32, usize)> = entries
             .iter()
             .enumerate()
-            .filter(|(_, e)| {
-                tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t)))
-            })
+            .filter(|(_, e)| tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t))))
             .map(|(i, e)| (cosine_similarity(&query_vector, &e.vector), i))
             .collect();
 
@@ -218,9 +218,7 @@ impl WikiStore {
         let entries = self.entries.read();
         let mut results: Vec<WikiEntry> = entries
             .iter()
-            .filter(|e| {
-                tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t)))
-            })
+            .filter(|e| tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t))))
             .filter_map(|e| self.read(&e.slug).ok())
             .collect();
 
@@ -249,11 +247,7 @@ fn validate_slug(slug: &str) -> Result<()> {
     if slug.is_empty() {
         return Err(FvaError::Wiki("slug cannot be empty".into()));
     }
-    if slug.contains("..")
-        || slug.contains('/')
-        || slug.contains('\\')
-        || slug.contains('\0')
-    {
+    if slug.contains("..") || slug.contains('/') || slug.contains('\\') || slug.contains('\0') {
         return Err(FvaError::Wiki(format!("invalid slug: {slug}")));
     }
     Ok(())
@@ -369,7 +363,20 @@ fn unix_to_ymdhms(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
     }
 
     let leap = is_leap(y);
-    let mdays: [u64; 12] = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mdays: [u64; 12] = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut m = 0usize;
     while m < 12 && days >= mdays[m] {
         days -= mdays[m];

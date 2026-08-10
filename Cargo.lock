@@ -2275,7 +2275,7 @@ dependencies = [
 
 [[package]]
 name = "fva"
-version = "1.0.2"
+version = "1.1.1"
 dependencies = [
  "anyhow",
  "arrow-array",

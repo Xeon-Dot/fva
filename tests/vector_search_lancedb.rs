@@ -5,10 +5,10 @@ mod common;
 use std::sync::Arc;
 use tempfile::TempDir;
 
+use common::make_chunks;
 use fva::embedding::{Embedder, LocalEmbedder};
 use fva::error::Result;
 use fva::vector::{LanceDbVectorStore, VectorStore, index_chunks};
-use common::make_chunks;
 
 async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<LocalEmbedder>, TempDir) {
     let embedder = Arc::new(LocalEmbedder::new(256));
@@ -38,8 +38,16 @@ async fn round_trip_upsert_search_remove() -> Result<()> {
         .take(3)
         .map(|h| h.symbol_name.as_str())
         .collect();
-    let auth_related = ["login_user", "logout_user", "validate_token", "handle_request"];
-    assert!(top.iter().any(|n| auth_related.contains(n)), "top3: {top:?}");
+    let auth_related = [
+        "login_user",
+        "logout_user",
+        "validate_token",
+        "handle_request",
+    ];
+    assert!(
+        top.iter().any(|n| auth_related.contains(n)),
+        "top3: {top:?}"
+    );
 
     store.remove_file("src/auth.rs").await?;
     assert_eq!(store.stats().total_vectors, chunks.len() - 3);

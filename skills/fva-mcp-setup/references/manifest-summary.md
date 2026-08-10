@@ -1,60 +1,54 @@
 # FVA MCP Client Install Paths
 
-From `examples/mcp-clients/manifest.json`.
+> **Language:** Please ask questions in English.
 
-## cursor.project
+Source of truth: `examples/mcp-clients/manifest.json`. Copy the matching example file to the install path for your agent.
 
-- Unix: `~/.cursor/mcp.json` or `<project>/.cursor/mcp.json`
-- Windows: `%USERPROFILE%\.cursor\mcp.json` or `<project>\.cursor\mcp.json`
-- Example: `cursor.project.mcp.json`
+## Cursor
 
-## cursor.project.windows
+- **Project:** `<project>/.cursor/mcp.json` — example: `cursor.project.mcp.json` (use `${workspaceFolder}` for `--path`)
+- **Project (Windows):** `<project>\.cursor\mcp.json` — example: `cursor.project.windows.mcp.json`
+- **Global:** `~/.cursor/mcp.json` (Unix) or `%USERPROFILE%\.cursor\mcp.json` (Windows) — example: `cursor.global.mcp.json`
 
-- Windows: `<project>\.cursor\mcp.json`
-- Example: `cursor.project.windows.mcp.json`
+## Claude
 
-## cursor.global
+- **Claude Code (project):** `<project>/.mcp.json` — example: `claude-code.project.mcp.json`
+  CLI shortcut: `claude mcp add --transport stdio fva -- fva --path .`
+- **Claude Desktop:**
+  - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+  - Linux: `~/.config/Claude/claude_desktop_config.json`
+  - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+  - Examples: `claude-desktop.macos-linux.json`, `claude-desktop.windows.json`
 
-- Unix: `~/.cursor/mcp.json`
-- Windows: `%USERPROFILE%\.cursor\mcp.json`
-- Example: `cursor.global.mcp.json`
+## VS Code / Copilot
 
-## claude-desktop
+- **Workspace:** `<project>/.vscode/mcp.json` — example: `vscode.workspace.mcp.json` (Windows variant: `vscode.workspace.windows.mcp.json`)
+- **User:** MCP user configuration in the VS Code profile folder
 
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- Linux: `~/.config/Claude/claude_desktop_config.json`
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+## Windsurf
 
-## claude-code
+- Unix: `~/.codeium/windsurf/mcp_config.json` — example: `windsurf.mcp_config.json`
+- Windows: `%USERPROFILE%\.codeium\windsurf\mcp_config.json` — example: `windsurf.windows.mcp_config.json`
 
-- Project: `<project>/.mcp.json`
-- CLI: `claude mcp add --transport stdio fva -- fva --path .`
+## Zed
 
-## vscode
+- Merge the `context_servers` block into Zed `settings.json` — example: `zed.context_servers.json` (Windows variant: `zed.windows.context_servers.json`)
 
-- Workspace: `<project>/.vscode/mcp.json`
-- User: MCP user configuration in profile folder
+## Continue
 
-## windsurf
+- `<project>/.continue/mcpServers/fva.yaml` — example: `continue.fva.yaml`
 
-- Unix: `~/.codeium/windsurf/mcp_config.json`
-- Windows: `%USERPROFILE%\.codeium\windsurf\mcp_config.json`
+## Gemini CLI
 
-## zed
+- Merge the `mcpServers` block into `~/.gemini/settings.json` — example: `gemini-cli.settings.json`
 
-- Merge `context_servers` block into Zed `settings.json`
+## Cline / Roo Code
 
-## continue
-
-- `<project>/.continue/mcpServers/fva.yaml`
-
-## gemini-cli
-
-- Merge into `~/.gemini/settings.json`
+- Extension MCP settings (global storage or workspace) — examples: `cline.mcp_settings.json`, `roo-code.mcp_settings.json`
 
 ## Notes
 
-- Replace `/path/to/your/project` with actual project root
-- On Windows, prefer `.windows.json` variants or full `fva.exe` path
-- Run `fva index --path .` before heavy search workloads
-- Set `VOYAGE_API_KEY` when using `provider = voyage`
+- Replace `/path/to/your/project` with the actual project root. If `fva` is on `PATH`, `"command": "fva"` works on all platforms; on Windows without `PATH`, use the full `fva.exe` path.
+- On Windows, prefer `.windows.json` variants or set the full path to `fva.exe`.
+- Run `fva index --path .` once before heavy search workloads; confirm with `index_status` or `fva status --path .`.
+- Set `VOYAGE_API_KEY` in env when using `provider = "voyage"` in `fva.toml` or `~/.config/fva/config.toml`.

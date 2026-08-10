@@ -12,7 +12,7 @@ use ignore::WalkBuilder;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
-use self::chunker::{chunk_file, CodeChunk};
+use self::chunker::{CodeChunk, chunk_file};
 use self::parser::{AstParser, is_indexable};
 use self::store::{ChunkStore, IndexStats, safe_relative_path};
 use crate::config::IndexerConfig;
@@ -97,14 +97,12 @@ impl Indexer {
         // Phase 1 (rayon, sync, CPU-bound): read -> parse -> chunk -> embed
         let parsed: Vec<ParsedFile> = files
             .par_iter()
-            .filter_map(|f| {
-                match self.parse_and_embed(f) {
-                    Ok(Some(v)) => Some(v),
-                    Ok(None) => None,
-                    Err(e) => {
-                        tracing::warn!("failed to index {}: {e}", f.display());
-                        None
-                    }
+            .filter_map(|f| match self.parse_and_embed(f) {
+                Ok(Some(v)) => Some(v),
+                Ok(None) => None,
+                Err(e) => {
+                    tracing::warn!("failed to index {}: {e}", f.display());
+                    None
                 }
             })
             .collect();
@@ -126,10 +124,7 @@ impl Indexer {
         Ok(parsed.iter().map(|(_, _, c, _)| c.len()).sum())
     }
 
-    fn parse_and_embed(
-        &self,
-        file_path: &Path,
-    ) -> Result<Option<ParsedFile>> {
+    fn parse_and_embed(&self, file_path: &Path) -> Result<Option<ParsedFile>> {
         if !is_indexable(file_path) {
             return Ok(None);
         }

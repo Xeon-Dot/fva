@@ -1,23 +1,32 @@
 ---
 name: fva-mcp-setup
 description: >
-  Configure FVA MCP server for AI coding agents (Cursor, Claude Code, VS Code,
-  Windsurf, Zed, Continue, Gemini CLI, Cline). Trigger when setting up FVA MCP,
-  editing mcp.json, connecting fva to an agent, or troubleshooting empty search
-  results from FVA tools.
+  Set up and configure the FVA MCP server (stdio) for AI coding agents —
+  Cursor, Claude Code/Desktop, VS Code/Copilot, Windsurf, Zed, Continue,
+  Gemini CLI, Cline/Roo Code. Trigger when installing FVA, editing mcp.json
+  or MCP settings, wiring fva to an agent, or troubleshooting empty or
+  stale results from FVA search tools.
 ---
 
 # FVA MCP Setup
 
-Connect the `fva` binary to AI agent MCP clients via stdio transport.
+> **Language:** Please ask questions in English.
+
+Connect the `fva` binary to any MCP-capable AI agent via **stdio** transport. One binary serves all tools: hybrid/semantic search, AST chunks, call graphs, and a wiki.
 
 ## Prerequisites
 
-1. Install `fva` — see README install scripts or `cargo install --path .`
+1. Install `fva` — see README one-liners or build from source:
+   ```bash
+   cargo install --path . --force
+   ```
 2. Verify: `fva --version`
-3. Index the project once: `fva index --path <project-root>`
+3. Index once from the project root: `fva index --path <project-root>`
+4. Confirm: `fva status --path .` shows non-zero `indexed_files`
 
 ## Generic Config
+
+Works with any MCP client that supports `mcpServers`:
 
 ```json
 {
@@ -31,7 +40,7 @@ Connect the `fva` binary to AI agent MCP clients via stdio transport.
 }
 ```
 
-**Windows** — use full path if not on PATH:
+**Windows** — use a full path if `fva` is not on `PATH`:
 
 ```json
 {
@@ -45,9 +54,11 @@ Connect the `fva` binary to AI agent MCP clients via stdio transport.
 }
 ```
 
+If `fva` is on `PATH`, the short `"command": "fva"` form works on all platforms.
+
 ## Agent-Specific Install Paths
 
-Ready-to-copy examples live in `examples/mcp-clients/`. See `manifest.json` for paths.
+Ready-to-copy examples live in `examples/mcp-clients/`. See `manifest.json` for the full path matrix.
 
 | Agent             | Example file                   | Install location                      |
 | ----------------- | ------------------------------ | ------------------------------------- |
@@ -70,7 +81,7 @@ claude mcp add --transport stdio fva -- fva --path .
 
 ### Cursor project template
 
-Use `${workspaceFolder}` for the project path:
+Use `${workspaceFolder}` so the path is portable:
 
 ```json
 {
@@ -89,22 +100,24 @@ Copy from `examples/mcp-clients/cursor.project.mcp.json`.
 
 ## Post-Setup Checklist
 
-1. Restart the MCP client (or reload MCP servers)
-2. Confirm `index_status` returns non-zero `indexed_files`
-3. Run a test `hybrid_search` query
-4. Add the recommended agent prompt (see `fva` skill or README)
+1. Restart the MCP client (or reload MCP servers).
+2. Call `index_status` — confirm `indexed_files` is non-zero.
+3. Run a test `hybrid_search` query and verify hits.
+4. Add the recommended agent prompt (see `fva` skill or README) so the agent prefers FVA for codebase exploration.
 
 ## Troubleshooting
 
 | Symptom                  | Fix                                                        |
 | ------------------------ | ---------------------------------------------------------- |
-| Tool not found           | Check `command` path; verify `fva --version` in same shell |
-| Empty search results     | Run `fva index --path .` then retry                        |
-| Stale results            | Re-index or enable `watch = true` in config                |
-| Voyage errors            | Set `VOYAGE_API_KEY` or switch `provider = "local"`        |
-| Permission denied (Unix) | `chmod +x` on binary; ensure PATH includes install dir     |
+| Tool not found           | Check `command` path; run `fva --version` in the same shell |
+| Empty search results     | Run `fva index --path .`, then retry                       |
+| Stale results            | Re-index, or set `watch = true` in `fva.toml` for auto-watch |
+| Voyage errors            | Set `VOYAGE_API_KEY` or switch to `provider = "local"`     |
+| Permission denied (Unix) | `chmod +x` on the binary; ensure install dir is on `PATH` |
 
 ## Optional: Voyage Embeddings
+
+For higher-quality semantic search, switch the embedder:
 
 ```toml
 # fva.toml or ~/.config/fva/config.toml
@@ -116,6 +129,8 @@ provider = "voyage"
 export VOYAGE_API_KEY=your-key-here
 ```
 
+Default `provider = "local"` needs no API key and works offline.
+
 ## Further Reference
 
-See [references/manifest-summary.md](references/manifest-summary.md) for full install path matrix.
+See [references/manifest-summary.md](references/manifest-summary.md) for the full install path matrix and [../fva/references/mcp-tools.md](../fva/references/mcp-tools.md) for tool parameters.

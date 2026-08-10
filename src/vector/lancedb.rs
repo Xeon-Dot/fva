@@ -7,9 +7,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use arrow_array::{
-    FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray,
-};
+use arrow_array::{FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
@@ -41,10 +39,7 @@ fn schema(dimensions: usize) -> Schema {
         Field::new("content_preview", DataType::Utf8, false),
         Field::new(
             "vector",
-            DataType::FixedSizeList(
-                Arc::new(Field::new("item", DataType::Float32, true)),
-                dim,
-            ),
+            DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
             true,
         ),
     ])
@@ -64,9 +59,9 @@ fn escape_sql_literal(s: &str) -> String {
 impl LanceDbVectorStore {
     pub async fn open(path: std::path::PathBuf, dimensions: usize) -> Result<Self> {
         std::fs::create_dir_all(&path)?;
-        let uri = path.to_str().ok_or_else(|| {
-            FvaError::Other(format!("non-utf8 vector path: {}", path.display()))
-        })?;
+        let uri = path
+            .to_str()
+            .ok_or_else(|| FvaError::Other(format!("non-utf8 vector path: {}", path.display())))?;
         let conn: Connection = lancedb::connect(uri)
             .execute()
             .await
@@ -82,9 +77,9 @@ impl LanceDbVectorStore {
                     tracing::warn!(
                         "vector dimensions changed, dropping lancedb table — re-index required"
                     );
-                    conn.drop_table(TABLE_NAME, &[]).await.map_err(|e| {
-                        FvaError::Other(format!("lancedb drop_table: {e}"))
-                    })?;
+                    conn.drop_table(TABLE_NAME, &[])
+                        .await
+                        .map_err(|e| FvaError::Other(format!("lancedb drop_table: {e}")))?;
                     conn.create_empty_table(TABLE_NAME, Arc::new(schema(dimensions)))
                         .execute()
                         .await
@@ -127,16 +122,57 @@ impl VectorStore for LanceDbVectorStore {
             let batch = RecordBatch::try_new(
                 Arc::new(schema(self.dimensions)),
                 vec![
-                    Arc::new(StringArray::from(chunks.iter().map(|c| c.id.clone()).collect::<Vec<_>>())),
-                    Arc::new(StringArray::from(chunks.iter().map(|c| c.relative_path.clone()).collect::<Vec<_>>())),
-                    Arc::new(StringArray::from(chunks.iter().map(|c| c.symbol_name.clone()).collect::<Vec<_>>())),
-                    Arc::new(StringArray::from(chunks.iter().map(|c| c.symbol_kind.clone()).collect::<Vec<_>>())),
-                    Arc::new(StringArray::from(chunks.iter().map(|c| c.language.clone()).collect::<Vec<_>>())),
-                    Arc::new(Int64Array::from(chunks.iter().map(|c| c.start_line as i64).collect::<Vec<_>>())),
-                    Arc::new(Int64Array::from(chunks.iter().map(|c| c.end_line as i64).collect::<Vec<_>>())),
-                    Arc::new(StringArray::from(chunks.iter().map(|c| preview(&c.content, 200)).collect::<Vec<_>>())),
-                    Arc::new(FixedSizeListArray::from_iter_primitive::<arrow_array::types::Float32Type, _, _>(
-                        vectors.iter().map(|v| Some(v.iter().map(|x| Some(*x)).collect::<Vec<_>>())).collect::<Vec<_>>(),
+                    Arc::new(StringArray::from(
+                        chunks.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
+                    )),
+                    Arc::new(StringArray::from(
+                        chunks
+                            .iter()
+                            .map(|c| c.relative_path.clone())
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(StringArray::from(
+                        chunks
+                            .iter()
+                            .map(|c| c.symbol_name.clone())
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(StringArray::from(
+                        chunks
+                            .iter()
+                            .map(|c| c.symbol_kind.clone())
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(StringArray::from(
+                        chunks
+                            .iter()
+                            .map(|c| c.language.clone())
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(Int64Array::from(
+                        chunks
+                            .iter()
+                            .map(|c| c.start_line as i64)
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(Int64Array::from(
+                        chunks.iter().map(|c| c.end_line as i64).collect::<Vec<_>>(),
+                    )),
+                    Arc::new(StringArray::from(
+                        chunks
+                            .iter()
+                            .map(|c| preview(&c.content, 200))
+                            .collect::<Vec<_>>(),
+                    )),
+                    Arc::new(FixedSizeListArray::from_iter_primitive::<
+                        arrow_array::types::Float32Type,
+                        _,
+                        _,
+                    >(
+                        vectors
+                            .iter()
+                            .map(|v| Some(v.iter().map(|x| Some(*x)).collect::<Vec<_>>()))
+                            .collect::<Vec<_>>(),
                         self.dimensions as i32,
                     )),
                 ],

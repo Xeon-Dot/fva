@@ -29,7 +29,13 @@ pub fn index_done(chunks: usize, ast: &IndexStats, vec: &VectorStats, g: &GraphS
     );
 }
 
-pub fn status(fff_files: usize, ast: &IndexStats, vec: &VectorStats, g: &GraphStats, embedder: &str) {
+pub fn status(
+    fff_files: usize,
+    ast: &IndexStats,
+    vec: &VectorStats,
+    g: &GraphStats,
+    embedder: &str,
+) {
     let mut table = Table::new();
     table
         .load_preset(UTF8_FULL)
@@ -44,16 +50,17 @@ pub fn status(fff_files: usize, ast: &IndexStats, vec: &VectorStats, g: &GraphSt
     table.add_row(vec!["AST", "files indexed", &ast.indexed_files.to_string()]);
     table.add_row(vec!["AST", "chunks", &ast.total_chunks.to_string()]);
     table.add_row(vec!["AST", "symbols", &ast.total_symbols.to_string()]);
-    table.add_row(vec!["Vectors", "embeddings", &vec.total_vectors.to_string()]);
+    table.add_row(vec![
+        "Vectors",
+        "embeddings",
+        &vec.total_vectors.to_string(),
+    ]);
     table.add_row(vec!["Vectors", "embedder", embedder]);
     table.add_row(vec!["Graph", "nodes", &g.nodes.to_string()]);
     table.add_row(vec!["Graph", "edges", &g.edges.to_string()]);
 
     println!("\n{}", table);
-    println!(
-        "  {}\n",
-        style("index ready").green().dim()
-    );
+    println!("  {}\n", style("index ready").green().dim());
 }
 
 pub fn search_header(query: &str, count: usize) {
@@ -91,11 +98,19 @@ pub fn search_hit(idx: usize, hit: &HybridHit) {
 }
 
 pub fn wiki_saved(slug: &str) {
-    println!("  {} saved '{}'", style("✓").green().bold(), style(slug).white());
+    println!(
+        "  {} saved '{}'",
+        style("✓").green().bold(),
+        style(slug).white()
+    );
 }
 
 pub fn wiki_deleted(slug: &str) {
-    println!("  {} deleted '{}'", style("✗").red().bold(), style(slug).white());
+    println!(
+        "  {} deleted '{}'",
+        style("✗").red().bold(),
+        style(slug).white()
+    );
 }
 
 pub fn wiki_read(slug: &str, tags: &[String], created: &str, updated: &str, content: &str) {
@@ -105,10 +120,7 @@ pub fn wiki_read(slug: &str, tags: &[String], created: &str, updated: &str, cont
         style(slug).bold().white()
     );
     if !tags.is_empty() {
-        println!(
-            "  {}",
-            style(format!("tags: {}", tags.join(", "))).dim()
-        );
+        println!("  {}", style(format!("tags: {}", tags.join(", "))).dim());
     }
     println!(
         "  {} · {}",
@@ -148,10 +160,7 @@ pub fn wiki_list(entries: &[(String, String, Vec<String>, String)]) {
         ]);
     }
 
-    println!(
-        "\n  {} entries\n",
-        style(entries.len()).bold().white()
-    );
+    println!("\n  {} entries\n", style(entries.len()).bold().white());
     println!("{table}\n");
 }
 
