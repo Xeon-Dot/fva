@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ignore::WalkBuilder;
+use indicatif::{ProgressBar, ProgressStyle};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 
@@ -78,10 +79,20 @@ impl Indexer {
         self.store.stats()
     }
 
-    /// Full index scan of the project.
+    /// Full index scan of the project. Set `show_progress` to false when running headless (MCP, tests).
     pub async fn index_all(&self) -> Result<usize> {
+        self.index_all_with_progress(should_show_progress()).await
+    }
+
+    pub async fn index_all_with_progress(&self, show_progress: bool) -> Result<usize> {
         *self.scanning.write() = true;
-        let result = self.index_all_inner().await;
+        let result = self
+            .index_all_inner(if show_progress {
+                build_progress_bar(0)
+            } else {
+                None
+            })
+            .await;
         *self.scanning.write() = false;
         if result.is_ok() {
             let _ = self.vectors.persist();
@@ -90,26 +101,60 @@ impl Indexer {
         result
     }
 
-    async fn index_all_inner(&self) -> Result<usize> {
+    async fn index_all_inner(&self, progress: Option<ProgressBar>) -> Result<usize> {
         let files = self.collect_files()?;
+        if let Some(ref pb) = progress {
+            pb.set_length(files.len() as u64);
+        }
         tracing::info!("indexing {} source files", files.len());
 
         // Phase 1 (rayon, sync, CPU-bound): read -> parse -> chunk -> embed
+        let counter = std::sync::atomic::AtomicUsize::new(0);
         let parsed: Vec<ParsedFile> = files
             .par_iter()
-            .filter_map(|f| match self.parse_and_embed(f) {
-                Ok(Some(v)) => Some(v),
-                Ok(None) => None,
-                Err(e) => {
-                    tracing::warn!("failed to index {}: {e}", f.display());
-                    None
+            .filter_map(|f| {
+                let res = match self.parse_and_embed(f) {
+                    Ok(Some(v)) => Some(v),
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::warn!("failed to index {}: {e}", f.display());
+                        None
+                    }
+                };
+                if let Some(ref pb) = progress {
+                    let n = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if n.is_multiple_of(8) || n == files.len() {
+                        pb.set_position(n as u64);
+                    }
                 }
+                res
             })
             .collect();
+        if let Some(ref pb) = progress {
+            pb.set_position(files.len() as u64);
+        }
 
         // Phase 2 (async): per-file vector upserts, sequential
-        for (relative, hash, chunks, vectors) in &parsed {
+        let commit_pb = if progress.is_some() && !parsed.is_empty() {
+            let pb = build_progress_bar(parsed.len() as u64);
+            if let Some(ref pb) = pb {
+                pb.set_message("committing");
+            }
+            pb
+        } else {
+            None
+        };
+        if let Some(ref pb) = progress {
+            pb.finish_and_clear();
+        }
+        for (i, (relative, hash, chunks, vectors)) in parsed.iter().enumerate() {
             self.commit_file(relative, hash, chunks, vectors).await;
+            if let Some(ref pb) = commit_pb {
+                pb.set_position((i + 1) as u64);
+            }
+        }
+        if let Some(pb) = commit_pb {
+            pb.finish_and_clear();
         }
 
         tracing::info!(
@@ -218,7 +263,7 @@ impl Indexer {
     pub fn spawn_background_index(self: &Arc<Self>) {
         let indexer = Arc::clone(self);
         tokio::spawn(async move {
-            if let Err(e) = indexer.index_all().await {
+            if let Err(e) = indexer.index_all_with_progress(false).await {
                 tracing::error!("background index failed: {e}");
             }
         });
@@ -235,4 +280,24 @@ impl Indexer {
         }
         true
     }
+}
+
+fn should_show_progress() -> bool {
+    use std::io::IsTerminal;
+    std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none()
+}
+
+fn build_progress_bar(len: u64) -> Option<ProgressBar> {
+    if !should_show_progress() {
+        return None;
+    }
+    let pb = ProgressBar::new(len);
+    pb.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.cyan} [{elapsed_precise}] [{bar:28.cyan/dim}] {pos}/{len} {msg}",
+        )
+        .unwrap_or_else(|_| ProgressStyle::default_bar())
+        .progress_chars("█▉▊▋▌▍▎▏ "),
+    );
+    Some(pb)
 }

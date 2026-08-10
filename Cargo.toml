@@ -1,6 +1,6 @@
 [package]
 name = "fva"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2024"
 description = "FFF · Vector · AST — hybrid codebase intelligence engine for AI coding agents"
 license = "MIT"
@@ -41,6 +41,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }
 console = "0.16"
+indicatif = "0.18"
 comfy-table = "7"
 toml = "0.8"
 dirs = "6.0"
