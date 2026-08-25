@@ -11,7 +11,6 @@ use crate::fff::FffEngine;
 use crate::graph::CallGraphStore;
 use crate::indexer::chunker::CodeChunk;
 use crate::indexer::store::ChunkStore;
-use crate::util::{HasScore, sort_by_score};
 use crate::vector::{VectorHit, VectorStore};
 
 /// A fused search result with multi-signal scoring.
@@ -69,12 +68,6 @@ impl HybridHit {
             graph_score: 0.0,
             sources: vec!["vector".into()],
         }
-    }
-}
-
-impl HasScore for HybridHit {
-    fn score(&self) -> f32 {
-        self.score
     }
 }
 
@@ -204,7 +197,7 @@ impl HybridQueryEngine {
 
         let total = candidates.len();
         let mut hits: Vec<HybridHit> = candidates.into_values().collect();
-        sort_by_score(&mut hits);
+        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         hits.truncate(limit);
 
         HybridSearchResult {

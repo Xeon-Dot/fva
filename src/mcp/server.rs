@@ -10,7 +10,7 @@ use serde::Deserialize;
 use crate::engine::FvaEngine;
 use crate::indexer::chunker::{ChunkSearchResult, format_chunks_for_agent};
 use crate::query::context::ContextBuilder;
-use crate::util::resolve_pagination;
+use crate::util::{parse_tags, resolve_pagination};
 
 pub const MCP_INSTRUCTIONS: &str = concat!(
     "**Language:** Please ask questions in English.\n",
@@ -490,13 +490,7 @@ impl FvaServer {
         &self,
         Parameters(params): Parameters<WikiWriteParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tags: Vec<String> = params
-            .tags
-            .unwrap_or_default()
-            .split(',')
-            .map(|t| t.trim().to_string())
-            .filter(|t| !t.is_empty())
-            .collect();
+        let tags = parse_tags(&params.tags.unwrap_or_default());
 
         self.engine
             .wiki
@@ -565,15 +559,10 @@ impl FvaServer {
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, _offset) =
             resolve_pagination(params.max_results, None, self.default_max_results);
-        let tags: Option<Vec<String>> = params
+        let tags = params
             .tags
-            .map(|t| {
-                t.split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            })
-            .filter(|v: &Vec<String>| !v.is_empty());
+            .map(|t| parse_tags(&t))
+            .filter(|v| !v.is_empty());
 
         let results = self
             .engine
@@ -625,15 +614,10 @@ impl FvaServer {
         &self,
         Parameters(params): Parameters<WikiListParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tags: Option<Vec<String>> = params
+        let tags = params
             .tags
-            .map(|t| {
-                t.split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect()
-            })
-            .filter(|v: &Vec<String>| !v.is_empty());
+            .map(|t| parse_tags(&t))
+            .filter(|v| !v.is_empty());
 
         let entries = self.engine.wiki.list(tags.as_deref());
 

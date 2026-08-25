@@ -10,6 +10,7 @@ use fva::cli_output;
 use fva::config::Config;
 use fva::engine::FvaEngine;
 use fva::mcp::FvaServer;
+use fva::util::parse_tags;
 
 #[cfg(feature = "mimalloc")]
 #[global_allocator]
@@ -290,12 +291,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             buf
                         }
                     };
-                    let tags: Vec<String> = tags
-                        .unwrap_or_default()
-                        .split(',')
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect();
+                    let tags = parse_tags(&tags.unwrap_or_default());
                     engine.wiki.write(&slug, &title, &tags, &content)?;
                     cli_output::wiki_saved(&slug);
                 }
@@ -314,14 +310,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cli_output::wiki_deleted(&slug);
                 }
                 WikiCommands::Search { query, tags, limit } => {
-                    let tags: Option<Vec<String>> = tags
-                        .map(|t| {
-                            t.split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect()
-                        })
-                        .filter(|v: &Vec<String>| !v.is_empty());
+                    let tags = tags
+                        .map(|t| parse_tags(&t))
+                        .filter(|v| !v.is_empty());
                     let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
                     let mapped: Vec<(String, Vec<String>, String, f64)> = results
                         .iter()
@@ -337,14 +328,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cli_output::wiki_search_results(&query, &mapped);
                 }
                 WikiCommands::List { tags } => {
-                    let tags: Option<Vec<String>> = tags
-                        .map(|t| {
-                            t.split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect()
-                        })
-                        .filter(|v: &Vec<String>| !v.is_empty());
+                    let tags = tags
+                        .map(|t| parse_tags(&t))
+                        .filter(|v| !v.is_empty());
                     let entries = engine.wiki.list(tags.as_deref());
                     let mapped: Vec<(String, String, Vec<String>, String)> = entries
                         .iter()

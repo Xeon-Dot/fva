@@ -1,4 +1,4 @@
-//! Background indexer: file watching, AST parsing, chunking, embedding, graph.
+//! Background indexer: AST parsing, chunking, embedding, graph.
 
 pub mod chunker;
 pub mod parser;
@@ -65,10 +65,6 @@ impl Indexer {
 
     pub fn store(&self) -> Arc<ChunkStore> {
         self.store.clone()
-    }
-
-    pub fn root(&self) -> &Path {
-        &self.root
     }
 
     pub fn is_scanning(&self) -> bool {
@@ -226,15 +222,6 @@ impl Indexer {
         self.store.upsert_file(relative, chunks.to_vec(), hash);
         let _ = self.vectors.upsert_chunks(chunks, vectors).await;
         let _ = self.graph.index_chunks(chunks);
-    }
-
-    /// Incrementally index a single file.
-    pub async fn index_file(&self, file_path: &Path) -> Result<usize> {
-        let Some((relative, hash, chunks, vectors)) = self.parse_and_embed(file_path)? else {
-            return Ok(0);
-        };
-        self.commit_file(&relative, &hash, &chunks, &vectors).await;
-        Ok(chunks.len())
     }
 
     pub fn collect_files(&self) -> Result<Vec<PathBuf>> {

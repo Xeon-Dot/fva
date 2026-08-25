@@ -10,9 +10,6 @@ pub enum FvaError {
     #[error("indexer error: {0}")]
     Indexer(String),
 
-    #[error("parser error: {0}")]
-    Parser(String),
-
     #[error("fff error: {0}")]
     Fff(#[from] fff_search::Error),
 
@@ -24,18 +21,6 @@ pub enum FvaError {
 
     #[error("serde error: {0}")]
     Serde(#[from] toml::de::Error),
-
-    #[error("embedding error: {0}")]
-    Embedding(String),
-
-    #[error("vector error: {0}")]
-    Vector(String),
-
-    #[error("graph error: {0}")]
-    Graph(String),
-
-    #[error("query error: {0}")]
-    Query(String),
 
     #[error("wiki error: {0}")]
     Wiki(String),

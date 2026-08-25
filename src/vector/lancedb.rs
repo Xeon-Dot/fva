@@ -13,9 +13,10 @@ use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, DistanceType, Table};
 
-use super::{VectorHit, VectorStats, VectorStore, preview};
+use super::{VectorHit, VectorStats, VectorStore};
 use crate::error::{FvaError, Result};
 use crate::indexer::chunker::CodeChunk;
+use crate::util::truncate_preview;
 
 const TABLE_NAME: &str = "chunks";
 
@@ -161,7 +162,7 @@ impl VectorStore for LanceDbVectorStore {
                     Arc::new(StringArray::from(
                         chunks
                             .iter()
-                            .map(|c| preview(&c.content, 200))
+                            .map(|c| truncate_preview(&c.content, 200))
                             .collect::<Vec<_>>(),
                     )),
                     Arc::new(FixedSizeListArray::from_iter_primitive::<

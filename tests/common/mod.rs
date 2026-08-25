@@ -6,7 +6,6 @@ use fva::indexer::chunker::CodeChunk;
 pub fn make_chunk(id: &str, symbol: &str, kind: &str, content: &str, path: &str) -> CodeChunk {
     CodeChunk {
         id: id.to_string(),
-        file_path: path.to_string(),
         relative_path: path.to_string(),
         language: "rust".to_string(),
         symbol_name: symbol.to_string(),
@@ -14,7 +13,6 @@ pub fn make_chunk(id: &str, symbol: &str, kind: &str, content: &str, path: &str)
         start_line: 1,
         end_line: content.lines().count().max(1),
         content: content.to_string(),
-        content_hash: "".to_string(),
         line_count: content.lines().count().max(1),
     }
 }

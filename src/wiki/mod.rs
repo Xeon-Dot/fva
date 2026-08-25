@@ -126,7 +126,7 @@ impl WikiStore {
             slug: entry.slug.clone(),
             title: entry.title.clone(),
             tags: entry.tags.clone(),
-            content_preview: preview(&entry.content, 200),
+            content_preview: crate::util::truncate_preview(&entry.content, 200),
             vector,
         });
 
@@ -146,7 +146,7 @@ impl WikiStore {
             (now.clone(), now.clone())
         };
 
-        let md = format_frontmatter(slug, title, tags, &created, &updated, content);
+        let md = format_frontmatter(title, tags, &created, &updated, content);
         std::fs::write(&file_path, md)?;
 
         let entry = WikiEntry {
@@ -254,7 +254,6 @@ fn validate_slug(slug: &str) -> Result<()> {
 }
 
 fn format_frontmatter(
-    _slug: &str,
     title: &str,
     tags: &[String],
     created: &str,
@@ -322,17 +321,6 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
         updated,
         content,
     })
-}
-
-fn preview(content: &str, max_len: usize) -> String {
-    if content.len() <= max_len {
-        return content.to_string();
-    }
-    let mut end = max_len.min(content.len());
-    while end > 0 && !content.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}...", &content[..end])
 }
 
 fn chrono_now() -> String {
@@ -423,7 +411,6 @@ mod tests {
     #[test]
     fn test_roundtrip() {
         let md = format_frontmatter(
-            "test",
             "My Title",
             &["tag1".into(), "tag2".into()],
             "2024-01-01T00:00:00Z",

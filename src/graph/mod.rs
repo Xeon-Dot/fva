@@ -305,7 +305,7 @@ impl CallGraphStore {
         let mut callee_map: HashMap<String, usize> = HashMap::new();
 
         for edge_idx in graph.edge_indices() {
-            if let Some((from, to)) = graph.edge_endpoints(edge_idx)
+            if let Some((from, _to)) = graph.edge_endpoints(edge_idx)
                 && let (Some(&fi), Some(label)) = (node_map.get(&from), graph.edge_weight(edge_idx))
             {
                 let ci = *callee_map.entry(label.clone()).or_insert_with(|| {
@@ -313,7 +313,6 @@ impl CallGraphStore {
                     callee_names.push(label.clone());
                     i
                 });
-                let _ = graph.node_weight(to);
                 edges.push((fi, ci));
             }
         }

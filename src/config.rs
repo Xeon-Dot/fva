@@ -40,29 +40,17 @@ impl Default for ProjectConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexerConfig {
-    #[serde(default = "default_true")]
-    pub watch: bool,
-    #[serde(default = "default_debounce")]
-    pub debounce_ms: u64,
     #[serde(default = "default_max_file_size")]
     pub max_file_size: u64,
-    #[serde(default)]
-    pub languages: Vec<String>,
     #[serde(default = "default_true")]
     pub respect_gitignore: bool,
-    #[serde(default = "default_true")]
-    pub git_boost: bool,
 }
 
 impl Default for IndexerConfig {
     fn default() -> Self {
         Self {
-            watch: default_true(),
-            debounce_ms: default_debounce(),
             max_file_size: default_max_file_size(),
-            languages: vec![],
             respect_gitignore: default_true(),
-            git_boost: default_true(),
         }
     }
 }
@@ -183,15 +171,12 @@ impl Default for McpConfig {
 pub struct SecurityConfig {
     #[serde(default = "default_true")]
     pub sandbox_indexing: bool,
-    #[serde(default = "default_true")]
-    pub no_telemetry: bool,
 }
 
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
             sandbox_indexing: default_true(),
-            no_telemetry: default_true(),
         }
     }
 }
@@ -201,9 +186,6 @@ fn default_root() -> String {
 }
 fn default_true() -> bool {
     true
-}
-fn default_debounce() -> u64 {
-    300
 }
 fn default_max_file_size() -> u64 {
     10 * 1024 * 1024
@@ -314,10 +296,6 @@ impl Config {
             return Some(dot);
         }
         None
-    }
-
-    pub fn project_config_candidates(root: &Path) -> [PathBuf; 2] {
-        [root.join("fva.toml"), root.join(".fva.toml")]
     }
 
     fn tentative_project_root(cli_root: Option<&str>, merged: &toml::Value) -> Option<PathBuf> {
@@ -447,19 +425,5 @@ mod tests {
             .expect("load");
 
         assert!((config.query.vector_weight - 0.2).abs() < f32::EPSILON);
-    }
-
-    #[test]
-    fn loads_global_xdg_config_when_no_local_config() {
-        let xdg = Config::global_config_path();
-        if !xdg.is_file() {
-            return;
-        }
-
-        let config = Config::load(None, None).expect("load config");
-        assert_eq!(
-            config.embedding.provider, "voyage",
-            "global ~/.config/fva/config.toml should set embedding.provider"
-        );
     }
 }

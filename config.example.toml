@@ -7,18 +7,10 @@
 root = "."
 
 [indexer]
-# Enable background file watcher
-watch = true
-# Debounce file change events (milliseconds)
-debounce_ms = 300
 # Maximum file size to parse (bytes)
 max_file_size = 10485760  # 10 MB
-# Languages to index (empty = all supported)
-languages = []
 # Respect .gitignore
 respect_gitignore = true
-# Boost recently modified git files
-git_boost = true
 
 [fff]
 # Frecency database path (LMDB)
@@ -70,5 +62,3 @@ log_file = ""
 [security]
 # Sandbox: only index within project root
 sandbox_indexing = true
-# Disable all telemetry (always true, not configurable at runtime)
-no_telemetry = true

@@ -2,7 +2,6 @@
 
 use std::path::Path;
 
-use blake3::Hash;
 use serde::{Deserialize, Serialize};
 
 use super::parser::{AstParser, RawChunk};
@@ -13,7 +12,6 @@ use crate::util;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeChunk {
     pub id: String,
-    pub file_path: String,
     pub relative_path: String,
     pub language: String,
     pub symbol_name: String,
@@ -21,17 +19,14 @@ pub struct CodeChunk {
     pub start_line: usize,
     pub end_line: usize,
     pub content: String,
-    pub content_hash: String,
     pub line_count: usize,
 }
 
 impl CodeChunk {
     pub fn from_raw(
         raw: RawChunk,
-        file_path: &Path,
         relative_path: &str,
         language: &str,
-        content_hash: &Hash,
     ) -> Self {
         let line_count = raw.content.lines().count();
         let id = format!(
@@ -41,7 +36,6 @@ impl CodeChunk {
 
         Self {
             id,
-            file_path: file_path.to_string_lossy().to_string(),
             relative_path: relative_path.to_string(),
             language: language.to_string(),
             symbol_name: raw.name,
@@ -49,7 +43,6 @@ impl CodeChunk {
             start_line: raw.start_line,
             end_line: raw.end_line,
             content: raw.content,
-            content_hash: content_hash.to_hex().to_string(),
             line_count,
         }
     }
@@ -72,7 +65,6 @@ pub fn chunk_file(
         return Ok(vec![]);
     }
 
-    let content_hash = blake3::hash(source.as_bytes());
     let Some(language) = AstParser::detect_language(file_path, Some(source)) else {
         return Ok(vec![]);
     };
@@ -81,7 +73,7 @@ pub fn chunk_file(
 
     Ok(raw_chunks
         .into_iter()
-        .map(|raw| CodeChunk::from_raw(raw, file_path, relative_path, &language, &content_hash))
+        .map(|raw| CodeChunk::from_raw(raw, relative_path, &language))
         .collect())
 }
 

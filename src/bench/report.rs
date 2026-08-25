@@ -77,46 +77,18 @@ pub struct BenchReport {
     pub duration_total_ms: f64,
 }
 
-pub struct BenchSuite {
-    report: BenchReport,
-}
-
-impl BenchSuite {
+impl BenchReport {
     pub fn new(repo: String) -> Self {
         Self {
-            report: BenchReport {
-                version: env!("CARGO_PKG_VERSION").to_string(),
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs().to_string())
-                    .unwrap_or_else(|_| "0".to_string()),
-                repo,
-                corpus: None,
-                results: Vec::new(),
-                duration_total_ms: 0.0,
-            },
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs().to_string())
+                .unwrap_or_else(|_| "0".to_string()),
+            repo,
+            corpus: None,
+            results: Vec::new(),
+            duration_total_ms: 0.0,
         }
-    }
-
-    pub fn set_corpus(&mut self, corpus: super::CorpusStats) {
-        self.report.corpus = Some(corpus);
-    }
-
-    pub fn add(&mut self, result: BenchResult) {
-        self.report.results.push(result);
-    }
-
-    pub fn set_duration(&mut self, ms: f64) {
-        self.report.duration_total_ms = ms;
-    }
-
-    pub fn finish(self) -> BenchReport {
-        self.report
-    }
-}
-
-impl From<BenchSuite> for BenchReport {
-    fn from(s: BenchSuite) -> Self {
-        s.report
     }
 }

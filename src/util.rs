@@ -7,18 +7,24 @@ pub fn estimate_tokens(text: &str) -> usize {
     text.len() / 4 + 1
 }
 
-/// Trait for items that have a numeric score.
-pub trait HasScore {
-    fn score(&self) -> f32;
+/// Parse a comma-separated tag string into trimmed, non-empty tags.
+pub fn parse_tags(s: &str) -> Vec<String> {
+    s.split(',')
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect()
 }
 
-/// Sort hits by score descending.
-pub fn sort_by_score<T: HasScore>(hits: &mut [T]) {
-    hits.sort_by(|a, b| {
-        b.score()
-            .partial_cmp(&a.score())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+/// Truncate content to a UTF-8-safe preview with an ellipsis.
+pub fn truncate_preview(content: &str, max_len: usize) -> String {
+    if content.len() <= max_len {
+        return content.to_string();
+    }
+    let mut end = max_len.min(content.len());
+    while end > 0 && !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &content[..end])
 }
 
 /// Build a reqwest blocking client with standard timeout and user-agent.

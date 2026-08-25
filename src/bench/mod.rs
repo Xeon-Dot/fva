@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub use report::{BenchReport, BenchResult, BenchSuite, TargetStatus};
+pub use report::{BenchReport, BenchResult, TargetStatus};
 
 use crate::engine::FvaEngine;
 use crate::indexer::chunker::chunk_file;
@@ -56,7 +56,7 @@ impl Default for BenchOptions {
 /// Run the full benchmark suite against an initialized engine.
 pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     let started = Instant::now();
-    let mut suite = BenchSuite::new(engine.root.display().to_string());
+    let mut report = BenchReport::new(engine.root.display().to_string());
     let engine = Arc::clone(engine);
 
     // Ensure index is warm
@@ -73,7 +73,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     let graph = engine.graph.stats();
     let fff_files = engine.fff.total_files();
 
-    suite.set_corpus(CorpusStats {
+    report.corpus = Some(CorpusStats {
         fff_files,
         indexed_files: stats.indexed_files,
         total_chunks: stats.total_chunks,
@@ -85,7 +85,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     });
 
     // --- FFF benchmarks ---
-    suite.add(
+    report.results.push(
         bench_op(
             "find_files",
             opts,
@@ -100,7 +100,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         .await,
     );
 
-    suite.add(
+    report.results.push(
         bench_op(
             "grep",
             opts,
@@ -118,13 +118,13 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     // --- AST chunk (single file) ---
     let sample_file = find_largest_rust_file(engine.root.as_path())
         .unwrap_or_else(|| engine.root.join("src/lib.rs"));
-    suite.add(bench_ast_chunk(opts, &sample_file));
+    report.results.push(bench_ast_chunk(opts, &sample_file));
 
     // --- Vector / query benchmarks ---
     for query in &opts.queries {
         let q = query.clone();
 
-        suite.add(
+        report.results.push(
             bench_op(
                 &format!("vector_search:{q}"),
                 opts,
@@ -146,7 +146,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
             .await,
         );
 
-        suite.add(
+        report.results.push(
             bench_op(
                 &format!("semantic_search:{q}"),
                 opts,
@@ -162,7 +162,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
             .await,
         );
 
-        suite.add(
+        report.results.push(
             bench_op(
                 &format!("hybrid_search:{q}"),
                 opts,
@@ -188,7 +188,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         .map(|c| c.symbol_name.clone())
         .unwrap_or_else(|| "main".into());
 
-    suite.add(
+    report.results.push(
         bench_op(
             "get_call_graph",
             opts,
@@ -210,7 +210,7 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
         .first()
         .cloned()
         .unwrap_or_else(|| "main".into());
-    suite.add(
+    report.results.push(
         bench_op(
             "get_smart_context",
             opts,
@@ -228,10 +228,10 @@ pub async fn run(engine: &Arc<FvaEngine>, opts: &BenchOptions) -> BenchReport {
     );
 
     // --- Full re-index (cold hash bypass via temp re-chunk) ---
-    suite.add(bench_full_index(&engine, opts).await);
+    report.results.push(bench_full_index(&engine, opts).await);
 
-    suite.set_duration(started.elapsed().as_secs_f64() * 1000.0);
-    suite.finish()
+    report.duration_total_ms = started.elapsed().as_secs_f64() * 1000.0;
+    report
 }
 
 async fn bench_op<F>(

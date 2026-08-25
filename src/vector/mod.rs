@@ -85,19 +85,6 @@ pub async fn build_vector_store(
     }
 }
 
-/// Truncate content to a UTF-8-safe preview.
-#[cfg(feature = "lancedb")]
-pub(crate) fn preview(content: &str, max_len: usize) -> String {
-    if content.len() <= max_len {
-        return content.to_string();
-    }
-    let mut end = max_len.min(content.len());
-    while end > 0 && !content.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}...", &content[..end])
-}
-
 /// Build the embedding texts for a set of chunks.
 pub(crate) fn chunk_texts(chunks: &[CodeChunk]) -> Vec<String> {
     chunks

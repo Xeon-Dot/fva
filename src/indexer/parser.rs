@@ -145,11 +145,6 @@ pub fn is_indexable(path: &std::path::Path) -> bool {
     AstParser::detect_language(path, None).is_some()
 }
 
-/// Number of languages available in the tree-sitter language pack manifest.
-pub fn supported_language_count() -> usize {
-    tree_sitter_language_pack::language_count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
