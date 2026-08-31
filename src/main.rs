@@ -167,6 +167,11 @@ fn ensure_data_dirs(config: &Config, root: &std::path::Path) {
     let _ = std::fs::create_dir_all(data_dir.join("frecency"));
     let _ = std::fs::create_dir_all(data_dir.join("history"));
     let _ = std::fs::create_dir_all(data_dir.join("vectors"));
+    // ponytail: auto-gitignore .fva contents so host repos stay clean
+    let gitignore = data_dir.join(".gitignore");
+    if !gitignore.exists() {
+        let _ = std::fs::write(&gitignore, "*\n");
+    }
 }
 
 #[tokio::main]
