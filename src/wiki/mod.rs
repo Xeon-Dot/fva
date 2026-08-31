@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use parking_lot::RwLock;
+use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::embedding::{Embedder, cosine_similarity};
@@ -68,7 +68,7 @@ impl WikiStore {
             && let Ok(bytes) = std::fs::read(&store.persist_path)
             && let Ok(snapshot) = bincode::deserialize::<WikiSnapshot>(&bytes)
         {
-            *store.entries.write() = snapshot.entries;
+            *store.entries.write().unwrap() = snapshot.entries;
         }
 
         store.reconcile()?;
@@ -79,7 +79,7 @@ impl WikiStore {
     /// Sync vector index with .md files on disk.
     /// ponytail: O(n) scan on open; fine for wiki-scale data (<1k entries).
     fn reconcile(&self) -> Result<()> {
-        let mut entries = self.entries.write();
+        let mut entries = self.entries.write().unwrap();
         let indexed: std::collections::HashSet<String> =
             entries.iter().map(|e| e.slug.clone()).collect();
 
@@ -120,7 +120,7 @@ impl WikiStore {
         );
         let vector = self.embedder.embed_one(&text)?;
 
-        let mut entries = self.entries.write();
+        let mut entries = self.entries.write().unwrap();
         entries.retain(|e| e.slug != entry.slug);
         entries.push(WikiVector {
             slug: entry.slug.clone(),
@@ -177,7 +177,7 @@ impl WikiStore {
         }
 
         std::fs::remove_file(&file_path)?;
-        self.entries.write().retain(|e| e.slug != slug);
+        self.entries.write().unwrap().retain(|e| e.slug != slug);
         self.persist()?;
 
         Ok(())
@@ -190,7 +190,7 @@ impl WikiStore {
         limit: usize,
     ) -> Result<Vec<(WikiEntry, f32)>> {
         let query_vector = self.embedder.embed_one(query)?;
-        let entries = self.entries.read();
+        let entries = self.entries.read().unwrap();
 
         let mut scored: Vec<(f32, usize)> = entries
             .iter()
@@ -215,7 +215,7 @@ impl WikiStore {
     }
 
     pub fn list(&self, tags_filter: Option<&[String]>) -> Vec<WikiEntry> {
-        let entries = self.entries.read();
+        let entries = self.entries.read().unwrap();
         let mut results: Vec<WikiEntry> = entries
             .iter()
             .filter(|e| tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t))))
@@ -228,13 +228,13 @@ impl WikiStore {
 
     pub fn stats(&self) -> WikiStats {
         WikiStats {
-            total_entries: self.entries.read().len(),
+            total_entries: self.entries.read().unwrap().len(),
         }
     }
 
     pub fn persist(&self) -> Result<()> {
         let snapshot = WikiSnapshot {
-            entries: self.entries.read().clone(),
+            entries: self.entries.read().unwrap().clone(),
         };
         let bytes = bincode::serialize(&snapshot)
             .map_err(|e| FvaError::Wiki(format!("wiki serialize: {e}")))?;
@@ -287,95 +287,39 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
     let fm_block = &after_first[..end];
     let content = after_first[end + 4..].trim().to_string();
 
-    let mut title = slug.to_string();
-    let mut tags = Vec::new();
-    let mut created = String::new();
-    let mut updated = String::new();
-
-    for line in fm_block.lines() {
-        let line = line.trim();
-        if let Some((key, value)) = line.split_once(':') {
-            let key = key.trim();
-            let value = value.trim();
-            match key {
-                "title" => title = value.to_string(),
-                "tags" => {
-                    tags = value
-                        .split(',')
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .collect();
-                }
-                "created" => created = value.to_string(),
-                "updated" => updated = value.to_string(),
-                _ => {}
-            }
-        }
+    #[derive(serde::Deserialize)]
+    struct FrontMatter {
+        title: Option<String>,
+        tags: Option<String>,
+        created: Option<String>,
+        updated: Option<String>,
     }
+
+    let fm: FrontMatter = serde_yaml::from_str(fm_block)
+        .map_err(|e| FvaError::Wiki(format!("invalid frontmatter in '{slug}': {e}")))?;
+
+    let tags = fm
+        .tags
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(WikiEntry {
         slug: slug.to_string(),
-        title,
+        title: fm.title.unwrap_or_else(|| slug.to_string()),
         tags,
-        created,
-        updated,
+        created: fm.created.unwrap_or_default(),
+        updated: fm.updated.unwrap_or_default(),
         content,
     })
 }
 
 fn chrono_now() -> String {
-    // ponytail: no chrono dep — UTC timestamp from SystemTime is enough for wiki metadata.
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let (y, m, d, hh, mm, ss) = unix_to_ymdhms(secs);
-    format!("{y:04}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}Z")
-}
-
-fn unix_to_ymdhms(secs: u64) -> (u64, u64, u64, u64, u64, u64) {
-    let ss = secs % 60;
-    let mins = secs / 60;
-    let mm = mins % 60;
-    let hh = (mins / 60) % 24;
-    let mut days = secs / 86400;
-
-    let mut y = 1970u64;
-    loop {
-        let dy = if is_leap(y) { 366 } else { 365 };
-        if days < dy {
-            break;
-        }
-        days -= dy;
-        y += 1;
-    }
-
-    let leap = is_leap(y);
-    let mdays: [u64; 12] = [
-        31,
-        if leap { 29 } else { 28 },
-        31,
-        30,
-        31,
-        30,
-        31,
-        31,
-        30,
-        31,
-        30,
-        31,
-    ];
-    let mut m = 0usize;
-    while m < 12 && days >= mdays[m] {
-        days -= mdays[m];
-        m += 1;
-    }
-
-    (y, m as u64 + 1, days + 1, hh, mm, ss)
-}
-
-fn is_leap(y: u64) -> bool {
-    (y.is_multiple_of(4) && !y.is_multiple_of(100)) || y.is_multiple_of(400)
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 #[cfg(test)]
@@ -425,7 +369,9 @@ mod tests {
 
     #[test]
     fn test_unix_to_ymdhms() {
-        assert_eq!(unix_to_ymdhms(0), (1970, 1, 1, 0, 0, 0));
-        assert_eq!(unix_to_ymdhms(1704067200), (2024, 1, 1, 0, 0, 0));
+        // Test that chrono_now produces valid RFC3339
+        let now = chrono_now();
+        assert!(now.contains('T'));
+        assert!(now.ends_with('Z'));
     }
 }

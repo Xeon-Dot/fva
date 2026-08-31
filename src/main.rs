@@ -58,6 +58,7 @@ enum Commands {
         command: WikiCommands,
     },
     /// Run performance benchmarks (Phase 5).
+    #[cfg(feature = "bench")]
     Bench {
         /// Benchmark iterations per operation.
         #[arg(short, long, default_value_t = 5)]
@@ -233,6 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             engine.shutdown().await;
         }
 
+        #[cfg(feature = "bench")]
         Commands::Bench {
             iterations,
             warmup,

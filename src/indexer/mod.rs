@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use ignore::WalkBuilder;
 use indicatif::{ProgressBar, ProgressStyle};
-use parking_lot::RwLock;
+use std::sync::RwLock;
 use rayon::prelude::*;
 
 use self::chunker::{CodeChunk, chunk_file};
@@ -68,7 +68,7 @@ impl Indexer {
     }
 
     pub fn is_scanning(&self) -> bool {
-        *self.scanning.read()
+        *self.scanning.read().unwrap()
     }
 
     pub fn stats(&self) -> IndexStats {
@@ -81,7 +81,7 @@ impl Indexer {
     }
 
     pub async fn index_all_with_progress(&self, show_progress: bool) -> Result<usize> {
-        *self.scanning.write() = true;
+        *self.scanning.write().unwrap() = true;
         let result = self
             .index_all_inner(if show_progress {
                 build_progress_bar(0)
@@ -89,7 +89,7 @@ impl Indexer {
                 None
             })
             .await;
-        *self.scanning.write() = false;
+        *self.scanning.write().unwrap() = false;
         if result.is_ok() {
             let _ = self.vectors.persist();
             let _ = self.graph.persist();
@@ -194,7 +194,7 @@ impl Indexer {
         }
 
         let chunks = {
-            let parser = self.parser.read();
+            let parser = self.parser.read().unwrap();
             chunk_file(
                 &parser,
                 file_path,

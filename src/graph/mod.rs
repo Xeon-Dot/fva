@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bincode::{deserialize, serialize};
-use parking_lot::RwLock;
+use std::sync::RwLock;
 use petgraph::Direction;
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
@@ -84,8 +84,8 @@ impl CallGraphStore {
             store.load_snapshot(snapshot);
             tracing::info!(
                 "loaded call graph snapshot: {} nodes, {} edges",
-                store.graph.read().node_count(),
-                store.graph.read().edge_count()
+                store.graph.read().unwrap().node_count(),
+                store.graph.read().unwrap().edge_count()
             );
         }
 
@@ -133,9 +133,9 @@ impl CallGraphStore {
             graph.add_edge(from_idx, to_idx, label);
         }
 
-        *self.graph.write() = graph;
-        *self.node_index.write() = node_index;
-        *self.callee_index.write() = callee_index;
+        *self.graph.write().unwrap() = graph;
+        *self.node_index.write().unwrap() = node_index;
+        *self.callee_index.write().unwrap() = callee_index;
     }
 
     pub fn index_chunks(&self, chunks: &[CodeChunk]) -> Result<usize> {
@@ -151,9 +151,9 @@ impl CallGraphStore {
     }
 
     pub fn add_edge(&self, caller: &SymbolId, callee: &str, line: usize) -> Result<()> {
-        let mut graph = self.graph.write();
-        let mut node_index = self.node_index.write();
-        let mut callee_index = self.callee_index.write();
+        let mut graph = self.graph.write().unwrap();
+        let mut node_index = self.node_index.write().unwrap();
+        let mut callee_index = self.callee_index.write().unwrap();
 
         let caller_idx = *node_index.entry(caller.clone()).or_insert_with(|| {
             let idx = graph.add_node(caller.clone());
@@ -185,9 +185,9 @@ impl CallGraphStore {
     }
 
     pub fn remove_file(&self, relative_path: &str) -> Result<()> {
-        let mut graph = self.graph.write();
-        let mut node_index = self.node_index.write();
-        let mut callee_index = self.callee_index.write();
+        let mut graph = self.graph.write().unwrap();
+        let mut node_index = self.node_index.write().unwrap();
+        let mut callee_index = self.callee_index.write().unwrap();
 
         let to_remove: Vec<SymbolId> = node_index
             .keys()
@@ -216,8 +216,8 @@ impl CallGraphStore {
 
     pub fn find_symbol_nodes(&self, name: &str) -> Vec<SymbolId> {
         let key = name.to_lowercase();
-        let graph = self.graph.read();
-        let callee_index = self.callee_index.read();
+        let graph = self.graph.read().unwrap();
+        let callee_index = self.callee_index.read().unwrap();
 
         callee_index
             .get(&key)
@@ -240,8 +240,8 @@ impl CallGraphStore {
     }
 
     fn traverse(&self, symbol_name: &str, direction: Direction, depth: usize) -> Vec<SymbolId> {
-        let graph = self.graph.read();
-        let callee_index = self.callee_index.read();
+        let graph = self.graph.read().unwrap();
+        let callee_index = self.callee_index.read().unwrap();
         let key = symbol_name.to_lowercase();
 
         let Some(start_indices) = callee_index.get(&key) else {
@@ -279,7 +279,7 @@ impl CallGraphStore {
     }
 
     pub fn stats(&self) -> GraphStats {
-        let graph = self.graph.read();
+        let graph = self.graph.read().unwrap();
         GraphStats {
             nodes: graph.node_count(),
             edges: graph.edge_count(),
@@ -288,7 +288,7 @@ impl CallGraphStore {
 
     pub fn persist(&self) -> Result<()> {
         // Save full snapshot
-        let graph = self.graph.read();
+        let graph = self.graph.read().unwrap();
         let mut nodes = Vec::new();
         let mut node_map = HashMap::new();
 

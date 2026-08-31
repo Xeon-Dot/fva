@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use blake3::Hash;
-use parking_lot::RwLock;
+use std::sync::RwLock;
 
 use super::chunker::CodeChunk;
 
@@ -38,7 +38,7 @@ impl ChunkStore {
 
     pub fn upsert_file(&self, relative_path: &str, chunks: Vec<CodeChunk>, content_hash: &Hash) {
         let hash_str = content_hash.to_hex().to_string();
-        let mut inner = self.inner.write();
+        let mut inner = self.inner.write().unwrap();
         if let Some(old_chunks) = inner.chunks_by_file.get(relative_path) {
             let old_ids: Vec<(String, String)> = old_chunks
                 .iter()
@@ -78,6 +78,7 @@ impl ChunkStore {
         let hash_str = content_hash.to_hex().to_string();
         self.inner
             .read()
+            .unwrap()
             .file_hashes
             .get(relative_path)
             .map(|h| h != &hash_str)
@@ -87,6 +88,7 @@ impl ChunkStore {
     pub fn chunks_for_file(&self, relative_path: &str) -> Vec<CodeChunk> {
         self.inner
             .read()
+            .unwrap()
             .chunks_by_file
             .get(relative_path)
             .cloned()
@@ -95,7 +97,7 @@ impl ChunkStore {
 
     pub fn find_symbol(&self, symbol: &str) -> Vec<CodeChunk> {
         let key = symbol.to_lowercase();
-        let inner = self.inner.read();
+        let inner = self.inner.read().unwrap();
         let Some(ids) = inner.chunks_by_symbol.get(&key) else {
             return Vec::new();
         };
@@ -106,12 +108,12 @@ impl ChunkStore {
 
     /// O(1) chunk lookup by ID.
     pub fn chunk_by_id(&self, chunk_id: &str) -> Option<CodeChunk> {
-        self.inner.read().chunks_by_id.get(chunk_id).cloned()
+        self.inner.read().unwrap().chunks_by_id.get(chunk_id).cloned()
     }
 
     pub fn search_chunks(&self, query: &str) -> Vec<CodeChunk> {
         let query_lower = query.to_lowercase();
-        let inner = self.inner.read();
+        let inner = self.inner.read().unwrap();
 
         inner
             .chunks_by_file
@@ -131,6 +133,7 @@ impl ChunkStore {
     pub fn all_chunks(&self) -> Vec<CodeChunk> {
         self.inner
             .read()
+            .unwrap()
             .chunks_by_file
             .values()
             .flatten()
@@ -140,11 +143,11 @@ impl ChunkStore {
 
     /// Clear content hashes so the next index pass re-processes all files (benchmark only).
     pub fn invalidate_hashes(&self) {
-        self.inner.write().file_hashes.clear();
+        self.inner.write().unwrap().file_hashes.clear();
     }
 
     pub fn stats(&self) -> IndexStats {
-        let inner = self.inner.read();
+        let inner = self.inner.read().unwrap();
         let total_chunks: usize = inner.chunks_by_file.values().map(|v| v.len()).sum();
         let total_symbols = inner.chunks_by_symbol.len();
 

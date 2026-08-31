@@ -15,7 +15,7 @@ use fff_search::{
     SharedFilePicker, SharedFrecency, SharedQueryTracker,
 };
 use git2::Repository;
-use parking_lot::RwLock;
+use std::sync::RwLock;
 
 use crate::config::FffConfig;
 use crate::error::{FvaError, Result};
@@ -148,7 +148,7 @@ impl FffEngine {
     }
 
     pub fn base_path(&self) -> String {
-        self.base_path.read().clone()
+        self.base_path.read().unwrap().clone()
     }
 
     pub fn find_files(&self, query: &str, offset: usize, limit: usize) -> Result<FindFilesOutput> {

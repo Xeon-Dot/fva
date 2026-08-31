@@ -2275,12 +2275,13 @@ dependencies = [
 
 [[package]]
 name = "fva"
-version = "1.1.4"
+version = "1.1.5"
 dependencies = [
  "arrow-array",
  "arrow-schema",
  "bincode",
  "blake3",
+ "chrono",
  "clap",
  "comfy-table",
  "console",
@@ -2294,7 +2295,6 @@ dependencies = [
  "indicatif",
  "lancedb",
  "mimalloc",
- "parking_lot",
  "petgraph",
  "rayon",
  "regex",
@@ -2303,6 +2303,7 @@ dependencies = [
  "schemars 1.2.2",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "thiserror 2.0.20",
  "tokio",
@@ -2541,9 +2542,9 @@ dependencies = [
 
 [[package]]
 name = "hermit-abi"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "hex"
@@ -5454,6 +5455,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.34+deprecated"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
+dependencies = [
+ "indexmap 2.14.1",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]

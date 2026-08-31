@@ -1,3 +1,4 @@
+#[cfg(feature = "bench")]
 pub mod bench;
 pub mod cli_output;
 pub mod config;
