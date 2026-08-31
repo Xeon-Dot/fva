@@ -29,7 +29,7 @@ pub struct VectorStats {
 }
 
 /// Build the embedding texts for a set of chunks.
-pub(crate) fn chunk_texts(chunks: &[CodeChunk]) -> Vec<String> {
+pub fn chunk_texts(chunks: &[CodeChunk]) -> Vec<String> {
     chunks
         .iter()
         .map(|c| {

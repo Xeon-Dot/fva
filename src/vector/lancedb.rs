@@ -181,7 +181,7 @@ impl LanceDbVectorStore {
         Ok(())
     }
 
-    pub(crate) async fn remove_file(&self, relative_path: &str) -> Result<()> {
+    pub async fn remove_file(&self, relative_path: &str) -> Result<()> {
         let sql = format!(
             "relative_path = '{}'",
             escape_sql_literal(relative_path)

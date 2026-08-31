@@ -24,7 +24,7 @@ async fn test_indexer() -> Indexer {
         IndexerConfig::default(),
         true,
         embedder,
-        vectors,
+        Arc::new(vectors),
         graph,
     )
 }
