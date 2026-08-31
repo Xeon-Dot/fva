@@ -58,16 +58,7 @@ fn empty_result(msg: String) -> CallToolResult {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct FindFilesParams {
-    #[serde(alias = "pattern")]
-    pub query: String,
-    #[serde(rename = "maxResults")]
-    pub max_results: Option<f64>,
-    pub offset: Option<f64>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct GrepParams {
+pub struct QueryParams {
     #[serde(alias = "pattern")]
     pub query: String,
     #[serde(rename = "maxResults")]
@@ -193,7 +184,7 @@ impl FvaServer {
     )]
     fn find_files(
         &self,
-        Parameters(params): Parameters<FindFilesParams>,
+        Parameters(params): Parameters<QueryParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, offset) =
             resolve_pagination(params.max_results, params.offset, self.default_max_results);
@@ -235,7 +226,7 @@ impl FvaServer {
     )]
     fn grep(
         &self,
-        Parameters(params): Parameters<GrepParams>,
+        Parameters(params): Parameters<QueryParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let (limit, offset) =
             resolve_pagination(params.max_results, params.offset, self.default_max_results);

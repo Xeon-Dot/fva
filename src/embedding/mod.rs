@@ -67,30 +67,9 @@ pub fn normalize(v: &mut [f32]) {
     }
 }
 
-/// Dot product of two f32 slices (auto-vectorized, 8-wide unrolled).
+/// Dot product of two f32 slices.
 fn dot_product(a: &[f32], b: &[f32]) -> f32 {
-    let n = a.len().min(b.len());
-    let mut sum = 0.0f32;
-    let mut i = 0;
-
-    // 8-wide unrolled loop — helps LLVM generate SIMD
-    while i + 8 <= n {
-        sum += a[i] * b[i]
-            + a[i + 1] * b[i + 1]
-            + a[i + 2] * b[i + 2]
-            + a[i + 3] * b[i + 3]
-            + a[i + 4] * b[i + 4]
-            + a[i + 5] * b[i + 5]
-            + a[i + 6] * b[i + 6]
-            + a[i + 7] * b[i + 7];
-        i += 8;
-    }
-    // Remainder
-    while i < n {
-        sum += a[i] * b[i];
-        i += 1;
-    }
-    sum
+    a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
 /// Cosine similarity between two L2-normalized vectors.

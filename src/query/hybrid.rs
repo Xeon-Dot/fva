@@ -3,18 +3,16 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-
 use crate::config::QueryConfig;
 use crate::embedding::Embedder;
 use crate::fff::FffEngine;
 use crate::graph::CallGraphStore;
 use crate::indexer::chunker::CodeChunk;
 use crate::indexer::store::ChunkStore;
-use crate::vector::{VectorHit, VectorStore};
+use crate::vector::{VectorHit, LanceDbVectorStore};
 
 /// A fused search result with multi-signal scoring.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HybridHit {
     pub chunk_id: String,
     pub relative_path: String,
@@ -72,7 +70,7 @@ impl HybridHit {
 }
 
 /// Hybrid search response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct HybridSearchResult {
     pub hits: Vec<HybridHit>,
     pub total_candidates: usize,
@@ -82,7 +80,7 @@ pub struct HybridSearchResult {
 pub struct HybridQueryEngine {
     fff: FffEngine,
     store: Arc<ChunkStore>,
-    vectors: Arc<dyn VectorStore>,
+    vectors: Arc<LanceDbVectorStore>,
     graph: Arc<CallGraphStore>,
     embedder: Arc<dyn Embedder>,
     config: QueryConfig,
@@ -92,7 +90,7 @@ impl HybridQueryEngine {
     pub fn new(
         fff: FffEngine,
         store: Arc<ChunkStore>,
-        vectors: Arc<dyn VectorStore>,
+        vectors: Arc<LanceDbVectorStore>,
         graph: Arc<CallGraphStore>,
         embedder: Arc<dyn Embedder>,
         config: QueryConfig,

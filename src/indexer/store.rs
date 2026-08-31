@@ -5,7 +5,6 @@ use std::path::Path;
 
 use blake3::Hash;
 use parking_lot::RwLock;
-use serde::{Deserialize, Serialize};
 
 use super::chunker::CodeChunk;
 
@@ -157,7 +156,7 @@ impl ChunkStore {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct IndexStats {
     pub indexed_files: usize,
     pub total_chunks: usize,

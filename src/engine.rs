@@ -10,7 +10,7 @@ use crate::fff::FffEngine;
 use crate::graph::CallGraphStore;
 use crate::indexer::Indexer;
 use crate::query::{ContextBuilder, HybridQueryEngine};
-use crate::vector::{VectorStore, build_vector_store};
+use crate::vector::LanceDbVectorStore;
 use crate::wiki::WikiStore;
 
 /// Central FVA engine holding all subsystems.
@@ -20,7 +20,7 @@ pub struct FvaEngine {
     pub fff: FffEngine,
     pub indexer: Arc<Indexer>,
     pub embedder: Arc<dyn Embedder>,
-    pub vectors: Arc<dyn VectorStore>,
+    pub vectors: Arc<LanceDbVectorStore>,
     pub graph: Arc<CallGraphStore>,
     pub query: HybridQueryEngine,
     pub context: ContextBuilder,
@@ -33,13 +33,21 @@ impl FvaEngine {
 
         let fff = FffEngine::new(&root, &config.fff)?;
         let embedder = build_embedder(&config.embedding)?;
-        let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions()).await?;
+        let vectors = Arc::new(LanceDbVectorStore::open(
+            if std::path::Path::new(&config.vector.db_path).is_absolute() {
+                std::path::PathBuf::from(&config.vector.db_path)
+            } else {
+                data_dir.join(&config.vector.db_path)
+            },
+            embedder.dimensions(),
+        )
+        .await?);
         let graph = Arc::new(CallGraphStore::open(&data_dir)?);
 
         let indexer = Arc::new(Indexer::new(
             root.clone(),
             config.indexer.clone(),
-            config.security.sandbox_indexing,
+            config.sandbox_indexing,
             embedder.clone(),
             vectors.clone(),
             graph.clone(),

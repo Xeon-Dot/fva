@@ -1,10 +1,7 @@
 //! Native LanceDB vector store.
 //!
-//! Async (tokio) API wrapped by the async VectorStore trait. Data persists
-//! automatically in the Lance format — `persist()` is a no-op.
+//! Data persists automatically in the Lance format — `persist()` is a no-op.
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use arrow_array::{FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray};
@@ -13,7 +10,7 @@ use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::{Connection, DistanceType, Table};
 
-use super::{VectorHit, VectorStats, VectorStore};
+use super::{VectorHit, VectorStats};
 use crate::error::{FvaError, Result};
 use crate::indexer::chunker::CodeChunk;
 use crate::util::truncate_preview;
@@ -100,199 +97,186 @@ impl LanceDbVectorStore {
     }
 }
 
-impl VectorStore for LanceDbVectorStore {
-    fn upsert_chunks(
+impl LanceDbVectorStore {
+    pub async fn upsert_chunks(
         &self,
         chunks: &[CodeChunk],
         vectors: &[Vec<f32>],
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
-        // Own the inputs so the future is 'static (self is a shared ref, fine).
-        let chunks = chunks.to_vec();
-        let vectors: Vec<Vec<f32>> = vectors.to_vec();
-        Box::pin(async move {
-            if chunks.len() != vectors.len() {
-                return Err(FvaError::Other(format!(
-                    "chunk/vector count mismatch: {} vs {}",
-                    chunks.len(),
-                    vectors.len()
-                )));
-            }
-            if let Some(path) = chunks.first().map(|c| c.relative_path.as_str()) {
-                self.remove_file(path).await?;
-            }
-            let batch = RecordBatch::try_new(
-                Arc::new(schema(self.dimensions)),
-                vec![
-                    Arc::new(StringArray::from(
-                        chunks.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
-                    )),
-                    Arc::new(StringArray::from(
-                        chunks
-                            .iter()
-                            .map(|c| c.relative_path.clone())
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(StringArray::from(
-                        chunks
-                            .iter()
-                            .map(|c| c.symbol_name.clone())
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(StringArray::from(
-                        chunks
-                            .iter()
-                            .map(|c| c.symbol_kind.clone())
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(StringArray::from(
-                        chunks
-                            .iter()
-                            .map(|c| c.language.clone())
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(Int64Array::from(
-                        chunks
-                            .iter()
-                            .map(|c| c.start_line as i64)
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(Int64Array::from(
-                        chunks.iter().map(|c| c.end_line as i64).collect::<Vec<_>>(),
-                    )),
-                    Arc::new(StringArray::from(
-                        chunks
-                            .iter()
-                            .map(|c| truncate_preview(&c.content, 200))
-                            .collect::<Vec<_>>(),
-                    )),
-                    Arc::new(FixedSizeListArray::from_iter_primitive::<
-                        arrow_array::types::Float32Type,
-                        _,
-                        _,
-                    >(
-                        vectors
-                            .iter()
-                            .map(|v| Some(v.iter().map(|x| Some(*x)).collect::<Vec<_>>()))
-                            .collect::<Vec<_>>(),
-                        self.dimensions as i32,
-                    )),
-                ],
-            )
-            .map_err(|e| FvaError::Other(format!("arrow batch: {e}")))?;
+    ) -> Result<()> {
+        if chunks.len() != vectors.len() {
+            return Err(FvaError::Other(format!(
+                "chunk/vector count mismatch: {} vs {}",
+                chunks.len(),
+                vectors.len()
+            )));
+        }
+        if let Some(path) = chunks.first().map(|c| c.relative_path.as_str()) {
+            self.remove_file(path).await?;
+        }
+        let batch = RecordBatch::try_new(
+            Arc::new(schema(self.dimensions)),
+            vec![
+                Arc::new(StringArray::from(
+                    chunks.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    chunks
+                        .iter()
+                        .map(|c| c.relative_path.clone())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    chunks
+                        .iter()
+                        .map(|c| c.symbol_name.clone())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    chunks
+                        .iter()
+                        .map(|c| c.symbol_kind.clone())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    chunks
+                        .iter()
+                        .map(|c| c.language.clone())
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(
+                    chunks
+                        .iter()
+                        .map(|c| c.start_line as i64)
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(Int64Array::from(
+                    chunks.iter().map(|c| c.end_line as i64).collect::<Vec<_>>(),
+                )),
+                Arc::new(StringArray::from(
+                    chunks
+                        .iter()
+                        .map(|c| truncate_preview(&c.content, 200))
+                        .collect::<Vec<_>>(),
+                )),
+                Arc::new(FixedSizeListArray::from_iter_primitive::<
+                    arrow_array::types::Float32Type,
+                    _,
+                    _,
+                >(
+                    vectors
+                        .iter()
+                        .map(|v| Some(v.iter().map(|x| Some(*x)).collect::<Vec<_>>()))
+                        .collect::<Vec<_>>(),
+                    self.dimensions as i32,
+                )),
+            ],
+        )
+        .map_err(|e| FvaError::Other(format!("arrow batch: {e}")))?;
 
-            self.table
-                .add(batch)
-                .execute()
-                .await
-                .map_err(|e| FvaError::Other(format!("lancedb add: {e}")))?;
-            Ok(())
-        })
+        self.table
+            .add(batch)
+            .execute()
+            .await
+            .map_err(|e| FvaError::Other(format!("lancedb add: {e}")))?;
+        Ok(())
     }
 
-    fn remove_file(
-        &self,
-        relative_path: &str,
-    ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
-        let relative_path = relative_path.to_string();
-        Box::pin(async move {
-            let sql = format!("relative_path = '{}'", escape_sql_literal(&relative_path));
-            self.table
-                .delete(&sql)
-                .await
-                .map_err(|e| FvaError::Other(format!("lancedb delete: {e}")))?;
-            Ok(())
-        })
+    pub(crate) async fn remove_file(&self, relative_path: &str) -> Result<()> {
+        let sql = format!(
+            "relative_path = '{}'",
+            escape_sql_literal(relative_path)
+        );
+        self.table
+            .delete(&sql)
+            .await
+            .map_err(|e| FvaError::Other(format!("lancedb delete: {e}")))?;
+        Ok(())
     }
 
-    fn search(
+    pub async fn search(
         &self,
         query_vector: &[f32],
         limit: usize,
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<VectorHit>>> + Send + '_>> {
-        let query_vector = query_vector.to_vec();
-        Box::pin(async move {
-            if limit == 0 {
-                return Ok(Vec::new());
-            }
-            let stream = self
-                .table
-                .query()
-                .nearest_to(&query_vector[..])
-                .map_err(|e| FvaError::Other(format!("lancedb query: {e}")))?
-                .distance_type(DistanceType::Cosine)
-                .limit(limit)
-                .execute()
-                .await
-                .map_err(|e| FvaError::Other(format!("lancedb search: {e}")))?;
+    ) -> Result<Vec<VectorHit>> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let stream = self
+            .table
+            .query()
+            .nearest_to(query_vector)
+            .map_err(|e| FvaError::Other(format!("lancedb query: {e}")))?
+            .distance_type(DistanceType::Cosine)
+            .limit(limit)
+            .execute()
+            .await
+            .map_err(|e| FvaError::Other(format!("lancedb search: {e}")))?;
 
-            let batches: Vec<RecordBatch> = stream
-                .try_collect()
-                .await
-                .map_err(|e| FvaError::Other(format!("lancedb stream: {e}")))?;
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| FvaError::Other(format!("lancedb stream: {e}")))?;
 
-            let mut hits = Vec::new();
-            for batch in batches {
-                let schema = batch.schema();
-                let idx = |name: &str| -> Result<usize> {
-                    schema
-                        .index_of(name)
-                        .map_err(|e| FvaError::Other(format!("column {name}: {e}")))
+        let mut hits = Vec::new();
+        for batch in batches {
+            let schema = batch.schema();
+            let idx = |name: &str| -> Result<usize> {
+                schema
+                    .index_of(name)
+                    .map_err(|e| FvaError::Other(format!("column {name}: {e}")))
+            };
+            let (i_chunk, i_path, i_sym, i_kind, i_lang, i_start, i_end, i_prev, i_dist) = (
+                idx("chunk_id")?,
+                idx("relative_path")?,
+                idx("symbol_name")?,
+                idx("symbol_kind")?,
+                idx("language")?,
+                idx("start_line")?,
+                idx("end_line")?,
+                idx("content_preview")?,
+                idx("_distance")?,
+            );
+            for row in 0..batch.num_rows() {
+                let col = |i: usize| -> Result<&StringArray> {
+                    batch
+                        .column(i)
+                        .as_any()
+                        .downcast_ref::<StringArray>()
+                        .ok_or_else(|| FvaError::Other("column not utf8".to_string()))
                 };
-                let (i_chunk, i_path, i_sym, i_kind, i_lang, i_start, i_end, i_prev, i_dist) = (
-                    idx("chunk_id")?,
-                    idx("relative_path")?,
-                    idx("symbol_name")?,
-                    idx("symbol_kind")?,
-                    idx("language")?,
-                    idx("start_line")?,
-                    idx("end_line")?,
-                    idx("content_preview")?,
-                    idx("_distance")?,
-                );
-                for row in 0..batch.num_rows() {
-                    let col = |i: usize| -> Result<&StringArray> {
-                        batch
-                            .column(i)
+                hits.push(VectorHit {
+                    chunk_id: col(i_chunk)?.value(row).to_string(),
+                    relative_path: col(i_path)?.value(row).to_string(),
+                    symbol_name: col(i_sym)?.value(row).to_string(),
+                    symbol_kind: col(i_kind)?.value(row).to_string(),
+                    language: col(i_lang)?.value(row).to_string(),
+                    start_line: batch
+                        .column(i_start)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .ok_or_else(|| FvaError::Other("start_line not int".to_string()))?
+                        .value(row) as usize,
+                    end_line: batch
+                        .column(i_end)
+                        .as_any()
+                        .downcast_ref::<Int64Array>()
+                        .ok_or_else(|| FvaError::Other("end_line not int".to_string()))?
+                        .value(row) as usize,
+                    content_preview: col(i_prev)?.value(row).to_string(),
+                    score: 1.0
+                        - batch
+                            .column(i_dist)
                             .as_any()
-                            .downcast_ref::<StringArray>()
-                            .ok_or_else(|| FvaError::Other("column not utf8".to_string()))
-                    };
-                    hits.push(VectorHit {
-                        chunk_id: col(i_chunk)?.value(row).to_string(),
-                        relative_path: col(i_path)?.value(row).to_string(),
-                        symbol_name: col(i_sym)?.value(row).to_string(),
-                        symbol_kind: col(i_kind)?.value(row).to_string(),
-                        language: col(i_lang)?.value(row).to_string(),
-                        start_line: batch
-                            .column(i_start)
-                            .as_any()
-                            .downcast_ref::<Int64Array>()
-                            .ok_or_else(|| FvaError::Other("start_line not int".to_string()))?
-                            .value(row) as usize,
-                        end_line: batch
-                            .column(i_end)
-                            .as_any()
-                            .downcast_ref::<Int64Array>()
-                            .ok_or_else(|| FvaError::Other("end_line not int".to_string()))?
-                            .value(row) as usize,
-                        content_preview: col(i_prev)?.value(row).to_string(),
-                        score: 1.0
-                            - batch
-                                .column(i_dist)
-                                .as_any()
-                                .downcast_ref::<Float32Array>()
-                                .ok_or_else(|| FvaError::Other("distance not float".to_string()))?
-                                .value(row),
-                    });
-                }
+                            .downcast_ref::<Float32Array>()
+                            .ok_or_else(|| FvaError::Other("distance not float".to_string()))?
+                            .value(row),
+                });
             }
-            Ok(hits)
-        })
+        }
+        Ok(hits)
     }
 
-    fn stats(&self) -> VectorStats {
-        // count_rows is async; run it on a dedicated thread with its own
-        // runtime so this works from any runtime context.
+    pub fn stats(&self) -> VectorStats {
         let table = self.table.clone();
         let total = std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
@@ -314,7 +298,7 @@ impl VectorStore for LanceDbVectorStore {
         }
     }
 
-    fn persist(&self) -> Result<()> {
+    pub fn persist(&self) -> Result<()> {
         Ok(())
     }
 }

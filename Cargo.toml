@@ -36,7 +36,6 @@ git2 = { version = "0.20", default-features = false, features = ["vendored-libgi
 petgraph = "0.8"
 parking_lot = "0.12"
 thiserror = "2.0"
-anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 clap = { version = "4", features = ["derive", "env"] }

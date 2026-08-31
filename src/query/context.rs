@@ -1,14 +1,12 @@
 //! Smart context builder — token-efficient context for agents.
 
-use serde::{Deserialize, Serialize};
-
 use super::hybrid::{HybridHit, HybridSearchResult};
 use crate::graph::CallGraphStore;
 use crate::indexer::store::ChunkStore;
 use crate::util;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SmartContext {
     pub query: String,
     pub path_hint: Option<String>,
@@ -17,7 +15,7 @@ pub struct SmartContext {
     pub truncated: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ContextSection {
     pub title: String,
     pub content: String,

@@ -6,8 +6,8 @@ use crate::error::{FvaError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
-    #[serde(default)]
-    pub project: ProjectConfig,
+    #[serde(default = "default_root")]
+    pub root: String,
     #[serde(default)]
     pub indexer: IndexerConfig,
     #[serde(default)]
@@ -20,22 +20,8 @@ pub struct Config {
     pub query: QueryConfig,
     #[serde(default)]
     pub mcp: McpConfig,
-    #[serde(default)]
-    pub security: SecurityConfig,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProjectConfig {
-    #[serde(default = "default_root")]
-    pub root: String,
-}
-
-impl Default for ProjectConfig {
-    fn default() -> Self {
-        Self {
-            root: default_root(),
-        }
-    }
+    #[serde(default = "default_true")]
+    pub sandbox_indexing: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,20 +149,6 @@ impl Default for McpConfig {
             server_name: default_server_name(),
             log_level: default_log_level(),
             log_file: String::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecurityConfig {
-    #[serde(default = "default_true")]
-    pub sandbox_indexing: bool,
-}
-
-impl Default for SecurityConfig {
-    fn default() -> Self {
-        Self {
-            sandbox_indexing: default_true(),
         }
     }
 }
@@ -328,7 +300,7 @@ impl Config {
     }
 
     pub fn resolve_root(&self, cli_override: Option<&str>) -> Result<PathBuf> {
-        let root = cli_override.unwrap_or(&self.project.root);
+        let root = cli_override.unwrap_or(&self.root);
         let path = PathBuf::from(root);
         let canonical = dunce::canonicalize(&path)
             .map_err(|e| FvaError::Config(format!("invalid project root '{}': {e}", root)))?;

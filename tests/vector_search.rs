@@ -7,21 +7,32 @@ use std::sync::Arc;
 
 use fva::embedding::{Embedder, LocalEmbedder, cosine_similarity};
 use fva::error::Result;
-use fva::vector::{LanceDbVectorStore, VectorStore, index_chunks};
+use fva::indexer::chunker::CodeChunk;
+use fva::vector::{LanceDbVectorStore, chunk_texts};
 use tempfile::TempDir;
 
 use common::make_chunks;
 
 /// Helper to build a test vector store
-async fn test_store() -> (Arc<dyn VectorStore>, Arc<dyn Embedder>, TempDir) {
+async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<dyn Embedder>, TempDir) {
     let embedder = Arc::new(LocalEmbedder::new(256));
     let dir = TempDir::new().expect("tempdir");
-    let store: Arc<dyn VectorStore> = Arc::new(
+    let store = Arc::new(
         LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
             .await
             .expect("open lancedb store"),
     );
     (store, embedder, dir)
+}
+
+async fn index_test_chunks(
+    embedder: &dyn Embedder,
+    store: &LanceDbVectorStore,
+    chunks: &[CodeChunk],
+) -> Result<()> {
+    let texts = chunk_texts(chunks);
+    let vectors = embedder.embed(&texts)?;
+    store.upsert_chunks(chunks, &vectors).await
 }
 
 #[tokio::test]
@@ -72,7 +83,7 @@ async fn test_search_quality_relevant_results_on_top() -> Result<()> {
     let count = chunks.len();
 
     // Index all test chunks
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
+    index_test_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     // Search for authentication-related code
     let query = "authenticate user login";
@@ -120,7 +131,7 @@ async fn test_search_quality_relevant_results_on_top() -> Result<()> {
 async fn test_search_rejects_unrelated_code() -> Result<()> {
     let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
+    index_test_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     // Search for sorting algorithms
     let query = "sort array of integers";
@@ -162,7 +173,7 @@ async fn test_search_rejects_unrelated_code() -> Result<()> {
 async fn test_parallel_search_performance() -> Result<()> {
     let embedder = Arc::new(LocalEmbedder::new(256));
     let dir = TempDir::new().expect("tempdir");
-    let store: Arc<dyn VectorStore> = Arc::new(
+    let store = Arc::new(
         LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
             .await
             .expect("open lancedb store"),
@@ -182,7 +193,7 @@ async fn test_parallel_search_performance() -> Result<()> {
         "  Indexing {} chunks for performance test",
         all_chunks.len()
     );
-    index_chunks(embedder.as_ref(), store.as_ref(), &all_chunks).await?;
+    index_test_chunks(embedder.as_ref(), store.as_ref(), &all_chunks).await?;
 
     let stats = store.stats();
     println!(
@@ -244,7 +255,7 @@ async fn test_token_index_properly_built() -> Result<()> {
     let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
 
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
+    index_test_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     let stats = store.stats();
     assert_eq!(

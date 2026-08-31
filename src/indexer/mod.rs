@@ -20,7 +20,7 @@ use crate::config::IndexerConfig;
 use crate::embedding::Embedder;
 use crate::error::{FvaError, Result};
 use crate::graph::CallGraphStore;
-use crate::vector::VectorStore;
+use crate::vector::LanceDbVectorStore;
 
 /// Shared indexer state.
 #[derive(Clone)]
@@ -32,7 +32,7 @@ pub struct Indexer {
     parser: Arc<RwLock<AstParser>>,
     scanning: Arc<RwLock<bool>>,
     embedder: Arc<dyn Embedder>,
-    vectors: Arc<dyn VectorStore>,
+        vectors: Arc<LanceDbVectorStore>,
     graph: Arc<CallGraphStore>,
 }
 
@@ -45,7 +45,7 @@ impl Indexer {
         config: IndexerConfig,
         sandbox: bool,
         embedder: Arc<dyn Embedder>,
-        vectors: Arc<dyn VectorStore>,
+    vectors: Arc<LanceDbVectorStore>,
         graph: Arc<CallGraphStore>,
     ) -> Self {
         let root = dunce::canonicalize(&root).unwrap_or(root);

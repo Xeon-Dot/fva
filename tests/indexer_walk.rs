@@ -6,7 +6,7 @@ use fva::embedding::build_embedder;
 use fva::graph::CallGraphStore;
 use fva::indexer::Indexer;
 use fva::indexer::parser::is_indexable;
-use fva::vector::build_vector_store;
+use fva::vector::LanceDbVectorStore;
 use ignore::WalkBuilder;
 
 async fn test_indexer() -> Indexer {
@@ -14,7 +14,7 @@ async fn test_indexer() -> Indexer {
     let config = Config::default();
     let embedder = build_embedder(&config.embedding).unwrap();
     let data_dir = root.join(".fva-test");
-    let vectors = build_vector_store(&config.vector, &data_dir, embedder.dimensions())
+    let vectors = LanceDbVectorStore::open(data_dir.join("vectors"), embedder.dimensions())
         .await
         .unwrap();
     let graph = Arc::new(CallGraphStore::open(&data_dir).unwrap());

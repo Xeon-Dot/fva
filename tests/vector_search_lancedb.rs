@@ -8,7 +8,8 @@ use tempfile::TempDir;
 use common::make_chunks;
 use fva::embedding::{Embedder, LocalEmbedder};
 use fva::error::Result;
-use fva::vector::{LanceDbVectorStore, VectorStore, index_chunks};
+use fva::indexer::chunker::CodeChunk;
+use fva::vector::{LanceDbVectorStore, chunk_texts};
 
 async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<LocalEmbedder>, TempDir) {
     let embedder = Arc::new(LocalEmbedder::new(256));
@@ -21,11 +22,21 @@ async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<LocalEmbedder>, TempDir) 
     (store, embedder, dir)
 }
 
+async fn index_test_chunks(
+    embedder: &dyn Embedder,
+    store: &LanceDbVectorStore,
+    chunks: &[CodeChunk],
+) -> Result<()> {
+    let texts = chunk_texts(chunks);
+    let vectors = embedder.embed(&texts)?;
+    store.upsert_chunks(chunks, &vectors).await
+}
+
 #[tokio::test]
 async fn round_trip_upsert_search_remove() -> Result<()> {
     let (store, embedder, _dir) = test_store().await;
     let chunks = make_chunks();
-    index_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
+    index_test_chunks(embedder.as_ref(), store.as_ref(), &chunks).await?;
 
     let stats = store.stats();
     assert_eq!(stats.total_vectors, chunks.len());
@@ -64,7 +75,7 @@ async fn persists_across_reopen() -> Result<()> {
     {
         let store = LanceDbVectorStore::open(dir.path().join("vectors"), 256).await?;
         let chunks = make_chunks();
-        index_chunks(embedder.as_ref(), &store, &chunks).await?;
+        index_test_chunks(embedder.as_ref(), &store, &chunks).await?;
     }
     let store = LanceDbVectorStore::open(dir.path().join("vectors"), 256).await?;
     assert_eq!(store.stats().total_vectors, make_chunks().len());
@@ -78,7 +89,7 @@ async fn dimension_change_drops_table() -> Result<()> {
         let store = LanceDbVectorStore::open(dir.path().join("vectors"), 256).await?;
         let chunks = make_chunks();
         let embedder = LocalEmbedder::new(256);
-        index_chunks(&embedder, &store, &chunks).await?;
+        index_test_chunks(&embedder, &store, &chunks).await?;
     }
     let store = LanceDbVectorStore::open(dir.path().join("vectors"), 512).await?;
     assert_eq!(store.stats().total_vectors, 0);
