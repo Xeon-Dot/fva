@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{FvaError, Result};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "default_root")]
     pub root: String,
@@ -22,6 +22,21 @@ pub struct Config {
     pub mcp: McpConfig,
     #[serde(default = "default_true")]
     pub sandbox_indexing: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            root: default_root(),
+            indexer: IndexerConfig::default(),
+            fff: FffConfig::default(),
+            embedding: EmbeddingConfig::default(),
+            vector: VectorConfig::default(),
+            query: QueryConfig::default(),
+            mcp: McpConfig::default(),
+            sandbox_indexing: default_true(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -397,5 +412,19 @@ mod tests {
             .expect("load");
 
         assert!((config.query.vector_weight - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn default_root_resolves_to_cwd() {
+        assert_eq!(Config::default().root, ".");
+
+        let dir = TempDir::new().expect("tempdir");
+        let cwd = std::env::current_dir().expect("cwd");
+        std::env::set_current_dir(dir.path()).expect("chdir");
+        let config = Config::load_layered(None, None, None).expect("load");
+        let root = config.resolve_root(None).expect("resolve");
+        std::env::set_current_dir(cwd).expect("restore cwd");
+
+        assert_eq!(root, dunce::canonicalize(dir.path()).expect("canonical"));
     }
 }
