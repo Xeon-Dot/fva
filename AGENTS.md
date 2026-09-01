@@ -27,4 +27,4 @@ No CI test gate — only a release workflow. Run `cargo test` and `cargo clippy 
 
 - Config precedence: defaults → `~/.config/fva/config.toml` → `fva.toml`/`.fva.toml` → `--config` flag.
 - The project dogfoods itself: `opencode.jsonc` runs `fva` as its own MCP server.
-- Release builds target musl (static linking). `.cargo/config.toml` sets `musl-gcc` as linker for musl targets.
+- Linux release builds target `*-unknown-linux-gnu` (glibc). musl static binaries cannot `dlopen` the tree-sitter grammar `.so`s that `tree-sitter-language-pack` downloads at runtime.
