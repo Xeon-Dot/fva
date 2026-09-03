@@ -132,6 +132,8 @@ pub struct QueryConfig {
     pub vector_weight: f32,
     #[serde(default = "default_graph_weight")]
     pub graph_weight: f32,
+    #[serde(default = "default_bm25_weight")]
+    pub bm25_weight: f32,
     #[serde(default = "default_max_context_tokens")]
     pub max_context_tokens: usize,
 }
@@ -143,6 +145,7 @@ impl Default for QueryConfig {
             fff_weight: default_fff_weight(),
             vector_weight: default_vector_weight(),
             graph_weight: default_graph_weight(),
+            bm25_weight: default_bm25_weight(),
             max_context_tokens: default_max_context_tokens(),
         }
     }
@@ -212,6 +215,9 @@ fn default_vector_weight() -> f32 {
 }
 fn default_graph_weight() -> f32 {
     0.2
+}
+fn default_bm25_weight() -> f32 {
+    0.35
 }
 fn default_max_context_tokens() -> usize {
     8000

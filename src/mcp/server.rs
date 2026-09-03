@@ -26,7 +26,7 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "\n",
     "## Search tools — priority order\n",
     "\n",
-    "1. **hybrid_search** — BEST default. Fuses FFF file search + vector semantic search + call graph. Use for \"where is X?\", \"how does Y work?\", or any open-ended exploration. Supports `query`, `path` (substring filter), `maxResults`.\n",
+    "1. **hybrid_search** — BEST default. Fuses FFF file search + BM25 lexical search + vector semantic search + call graph. Use for \"where is X?\", \"how does Y work?\", or any open-ended exploration. Supports `query`, `path` (substring filter), `maxResults`.\n",
     "2. **get_smart_context** — Task-oriented, token-budget context. Runs hybrid search + call graph + file context and formats a compact answer ideal before making edits. Params: `query`, `path` (file hint), `maxResults`.\n",
     "3. **semantic_search** — Pure embedding search over AST chunks. Best for conceptual queries (\"auth middleware\", \"retry logic\", \"error handling patterns\") when keyword search fails. Params: `query`, `maxResults`.\n",
     "4. **get_symbol_info** — Exact symbol lookup by name. Returns full AST chunks with source code. Use when you know the symbol name. Params: `symbol`, `maxResults`.\n",
@@ -347,7 +347,7 @@ impl FvaServer {
 
     #[tool(
         name = "hybrid_search",
-        description = "BEST default for any codebase exploration. Fuses FFF file search + vector semantic search + call graph traversal (3-stage fusion). Use for \"where is X?\", \"how does Y work?\", or any open-ended question. Stronger than any single signal. Params: query (required), path (substring filter), maxResults."
+        description = "BEST default for any codebase exploration. Fuses FFF file search + BM25 lexical search + vector semantic search + call graph traversal (4-signal fusion). Use for \"where is X?\", \"how does Y work?\", or any open-ended question. Stronger than any single signal. Params: query (required), path (substring filter), maxResults."
     )]
     async fn hybrid_search(
         &self,

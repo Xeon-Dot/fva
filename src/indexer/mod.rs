@@ -20,6 +20,7 @@ use crate::config::IndexerConfig;
 use crate::embedding::Embedder;
 use crate::error::{FvaError, Result};
 use crate::graph::CallGraphStore;
+use crate::query::Bm25Index;
 use crate::vector::LanceDbVectorStore;
 
 /// Shared indexer state.
@@ -32,8 +33,9 @@ pub struct Indexer {
     parser: Arc<RwLock<AstParser>>,
     scanning: Arc<RwLock<bool>>,
     embedder: Arc<dyn Embedder>,
-        vectors: Arc<LanceDbVectorStore>,
+    vectors: Arc<LanceDbVectorStore>,
     graph: Arc<CallGraphStore>,
+    bm25: Arc<Bm25Index>,
 }
 
 /// Sync phase result: one entry per indexed file, ready for the async commit phase.
@@ -45,8 +47,9 @@ impl Indexer {
         config: IndexerConfig,
         sandbox: bool,
         embedder: Arc<dyn Embedder>,
-    vectors: Arc<LanceDbVectorStore>,
+        vectors: Arc<LanceDbVectorStore>,
         graph: Arc<CallGraphStore>,
+        bm25: Arc<Bm25Index>,
     ) -> Self {
         let root = dunce::canonicalize(&root).unwrap_or(root);
         let root = dunce::simplified(&root).to_path_buf();
@@ -60,6 +63,7 @@ impl Indexer {
             embedder,
             vectors,
             graph,
+            bm25,
         }
     }
 
@@ -221,6 +225,7 @@ impl Indexer {
         let _ = self.vectors.remove_file(relative).await;
         self.store.upsert_file(relative, chunks.to_vec(), hash);
         let _ = self.vectors.upsert_chunks(chunks, vectors).await;
+        let _ = self.bm25.upsert_file(relative, chunks);
         let _ = self.graph.index_chunks(chunks);
     }
 

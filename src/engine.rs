@@ -9,7 +9,7 @@ use crate::error::Result;
 use crate::fff::FffEngine;
 use crate::graph::CallGraphStore;
 use crate::indexer::Indexer;
-use crate::query::{ContextBuilder, HybridQueryEngine};
+use crate::query::{Bm25Index, ContextBuilder, HybridQueryEngine};
 use crate::vector::LanceDbVectorStore;
 use crate::wiki::WikiStore;
 
@@ -43,6 +43,7 @@ impl FvaEngine {
         )
         .await?);
         let graph = Arc::new(CallGraphStore::open(&data_dir)?);
+        let bm25 = Arc::new(Bm25Index::new()?);
 
         let indexer = Arc::new(Indexer::new(
             root.clone(),
@@ -51,6 +52,7 @@ impl FvaEngine {
             embedder.clone(),
             vectors.clone(),
             graph.clone(),
+            bm25.clone(),
         ));
 
         let store = indexer.store();
@@ -59,6 +61,7 @@ impl FvaEngine {
             store.clone(),
             vectors.clone(),
             graph.clone(),
+            bm25,
             embedder.clone(),
             config.query.clone(),
         );

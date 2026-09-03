@@ -1,8 +1,9 @@
-//! Hybrid query engine: FFF + Vector + Graph fusion.
+//! Hybrid query engine: FFF + Vector + Graph + BM25 fusion.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::bm25::Bm25Index;
 use crate::config::QueryConfig;
 use crate::embedding::Embedder;
 use crate::fff::FffEngine;
@@ -26,6 +27,7 @@ pub struct HybridHit {
     pub fff_score: f32,
     pub vector_score: f32,
     pub graph_score: f32,
+    pub bm25_score: f32,
     pub sources: Vec<String>,
 }
 
@@ -44,6 +46,7 @@ impl HybridHit {
             fff_score: 0.0,
             vector_score: 0.0,
             graph_score: 0.0,
+            bm25_score: 0.0,
             sources: Vec::new(),
         }
     }
@@ -64,9 +67,19 @@ impl HybridHit {
             fff_score: 0.0,
             vector_score: vh.score,
             graph_score: 0.0,
+            bm25_score: 0.0,
             sources: vec!["vector".into()],
         }
     }
+}
+
+/// Per-signal weighted scores merged into a [`HybridHit`].
+#[derive(Debug, Clone, Copy, Default)]
+struct SignalScores {
+    fff: f32,
+    vector: f32,
+    graph: f32,
+    bm25: f32,
 }
 
 /// Hybrid search response.
@@ -82,6 +95,7 @@ pub struct HybridQueryEngine {
     store: Arc<ChunkStore>,
     vectors: Arc<LanceDbVectorStore>,
     graph: Arc<CallGraphStore>,
+    bm25: Arc<Bm25Index>,
     embedder: Arc<dyn Embedder>,
     config: QueryConfig,
 }
@@ -92,6 +106,7 @@ impl HybridQueryEngine {
         store: Arc<ChunkStore>,
         vectors: Arc<LanceDbVectorStore>,
         graph: Arc<CallGraphStore>,
+        bm25: Arc<Bm25Index>,
         embedder: Arc<dyn Embedder>,
         config: QueryConfig,
     ) -> Self {
@@ -100,6 +115,7 @@ impl HybridQueryEngine {
             store,
             vectors,
             graph,
+            bm25,
             embedder,
             config,
         }
@@ -117,9 +133,10 @@ impl HybridQueryEngine {
                     self.merge_hit(
                         &mut candidates,
                         &chunk,
-                        fff_score * self.config.fff_weight,
-                        0.0,
-                        0.0,
+                        SignalScores {
+                            fff: fff_score * self.config.fff_weight,
+                            ..Default::default()
+                        },
                         "fff",
                     );
                 }
@@ -131,13 +148,34 @@ impl HybridQueryEngine {
             self.merge_hit(
                 &mut candidates,
                 &chunk,
-                0.5 * self.config.fff_weight,
-                0.0,
-                0.0,
+                SignalScores {
+                    fff: 0.5 * self.config.fff_weight,
+                    ..Default::default()
+                },
                 "text",
             );
         }
 
+        // Stage 1c: BM25 lexical search
+        let bm25_hits = self.bm25.search(query, limit * 5);
+        let bm25_max = bm25_hits
+            .iter()
+            .map(|(_, s)| *s)
+            .fold(0.0f32, f32::max)
+            .max(f32::EPSILON);
+        for (chunk_id, raw) in bm25_hits {
+            if let Some(chunk) = self.store.chunk_by_id(&chunk_id) {
+                self.merge_hit(
+                    &mut candidates,
+                    &chunk,
+                    SignalScores {
+                        bm25: raw / bm25_max * self.config.bm25_weight,
+                        ..Default::default()
+                    },
+                    "bm25",
+                );
+            }
+        }
         // Stage 2: Vector semantic search
         if let Ok(query_vec) = self.embedder.embed_one(query)
             && let Ok(vector_hits) = self.vectors.search(&query_vec, limit * 5).await
@@ -148,9 +186,10 @@ impl HybridQueryEngine {
                         self.merge_hit(
                             &mut candidates,
                             &chunk,
-                            0.0,
-                            hit.score * self.config.vector_weight,
-                            0.0,
+                            SignalScores {
+                                vector: hit.score * self.config.vector_weight,
+                                ..Default::default()
+                            },
                             "vector",
                         );
                     }
@@ -174,9 +213,10 @@ impl HybridQueryEngine {
                     self.merge_hit(
                         &mut candidates,
                         &chunk,
-                        0.0,
-                        0.0,
-                        0.8 * self.config.graph_weight,
+                        SignalScores {
+                            graph: 0.8 * self.config.graph_weight,
+                            ..Default::default()
+                        },
                         "graph",
                     );
                 }
@@ -185,9 +225,10 @@ impl HybridQueryEngine {
                 self.merge_hit(
                     &mut candidates,
                     &chunk,
-                    0.0,
-                    0.0,
-                    1.0 * self.config.graph_weight,
+                    SignalScores {
+                        graph: 1.0 * self.config.graph_weight,
+                        ..Default::default()
+                    },
                     "graph",
                 );
             }
@@ -238,19 +279,18 @@ impl HybridQueryEngine {
         &self,
         candidates: &mut HashMap<String, HybridHit>,
         chunk: &CodeChunk,
-        fff_score: f32,
-        vector_score: f32,
-        graph_score: f32,
+        scores: SignalScores,
         source: &str,
     ) {
         let entry = candidates
             .entry(chunk.id.clone())
             .or_insert_with(|| HybridHit::from_chunk(chunk));
 
-        entry.fff_score = entry.fff_score.max(fff_score);
-        entry.vector_score = entry.vector_score.max(vector_score);
-        entry.graph_score = entry.graph_score.max(graph_score);
-        entry.score = entry.fff_score + entry.vector_score + entry.graph_score;
+        entry.fff_score = entry.fff_score.max(scores.fff);
+        entry.vector_score = entry.vector_score.max(scores.vector);
+        entry.graph_score = entry.graph_score.max(scores.graph);
+        entry.bm25_score = entry.bm25_score.max(scores.bm25);
+        entry.score = entry.fff_score + entry.vector_score + entry.graph_score + entry.bm25_score;
         if !entry.sources.contains(&source.to_string()) {
             entry.sources.push(source.to_string());
         }

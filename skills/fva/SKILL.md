@@ -143,6 +143,7 @@ backend = "lancedb"
 fff_weight = 0.3
 vector_weight = 0.5
 graph_weight = 0.2
+bm25_weight = 0.35
 max_context_tokens = 8000
 ```
 

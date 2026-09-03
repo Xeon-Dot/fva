@@ -6,6 +6,7 @@ use fva::embedding::build_embedder;
 use fva::graph::CallGraphStore;
 use fva::indexer::Indexer;
 use fva::indexer::parser::is_indexable;
+use fva::query::Bm25Index;
 use fva::vector::LanceDbVectorStore;
 use ignore::WalkBuilder;
 
@@ -18,6 +19,7 @@ async fn test_indexer() -> Indexer {
         .await
         .unwrap();
     let graph = Arc::new(CallGraphStore::open(&data_dir).unwrap());
+    let bm25 = Arc::new(Bm25Index::new().unwrap());
 
     Indexer::new(
         root,
@@ -26,6 +28,7 @@ async fn test_indexer() -> Indexer {
         embedder,
         Arc::new(vectors),
         graph,
+        bm25,
     )
 }
 

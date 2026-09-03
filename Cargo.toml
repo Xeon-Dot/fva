@@ -62,6 +62,9 @@ arrow-schema = { version = "58", optional = true }
 # Async stream utilities for LanceDB query results
 futures = "0.3"
 
+# BM25 lexical search (hybrid Stage 1c)
+tantivy = "0.26"
+
 [features]
 default = ["mimalloc", "lancedb"]
 mimalloc = ["dep:mimalloc"]
