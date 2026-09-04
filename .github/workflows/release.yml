@@ -14,9 +14,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTC_WRAPPER: sccache
-  SCCACHE_GHA_ENABLED: "true"
-  SCCACHE_CACHE_SIZE: "2G"
   CARGO_INCREMENTAL: 0
 
 jobs:
@@ -50,14 +47,6 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name }}
 
-      - name: Configure sccache (GHAC backend on Blacksmith)
-        uses: actions/github-script@v9
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RESULTS_URL', process.env.ACTIONS_RESULTS_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -87,10 +76,6 @@ jobs:
 
       - name: Build
         run: cargo build --release --all-features --target ${{ matrix.target }}
-
-      - name: sccache stats
-        if: always()
-        run: sccache --show-stats
 
       - name: Package (tar.gz)
         if: matrix.archive_ext == 'tar.gz'
