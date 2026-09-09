@@ -102,6 +102,12 @@ enum WikiCommands {
         /// Comma-separated tags.
         #[arg(long)]
         tags: Option<String>,
+        /// Entry type: source|entity|concept|analysis|adr|arch|gotcha (default: concept).
+        #[arg(long = "type")]
+        entry_type: Option<String>,
+        /// Comma-separated source paths or URLs.
+        #[arg(long)]
+        sources: Option<String>,
     },
     /// Read a wiki entry by slug.
     Read {
@@ -120,6 +126,9 @@ enum WikiCommands {
         /// Filter by comma-separated tags.
         #[arg(short, long)]
         tags: Option<String>,
+        /// Filter by entry type: source|entity|concept|analysis|adr|arch|gotcha.
+        #[arg(long = "type")]
+        entry_type: Option<String>,
         /// Max results.
         #[arg(short, long, default_value_t = 10)]
         limit: usize,
@@ -129,6 +138,38 @@ enum WikiCommands {
         /// Filter by comma-separated tags.
         #[arg(short, long)]
         tags: Option<String>,
+        /// Filter by entry type: source|entity|concept|analysis|adr|arch|gotcha.
+        #[arg(long = "type")]
+        entry_type: Option<String>,
+    },
+    /// Ingest a source (Karpathy-style): save under sources/ + print ingest plan.
+    Ingest {
+        /// Raw text, or omit to read from stdin.
+        #[arg(long)]
+        content: Option<String>,
+        /// Read raw text from this file instead of --content/stdin.
+        #[arg(long)]
+        file: Option<String>,
+        /// Hint for the source title.
+        #[arg(long)]
+        title: Option<String>,
+        /// Original path or URL.
+        #[arg(long)]
+        source_uri: Option<String>,
+        /// One of: entity, concept, analysis, adr, arch, gotcha.
+        #[arg(long)]
+        area_hint: Option<String>,
+    },
+    /// Query the wiki index-first.
+    Query {
+        /// Search query.
+        query: String,
+    },
+    /// Lint the wiki.
+    Lint {
+        /// Days after which a non-source entry counts as stale.
+        #[arg(long, default_value_t = 180)]
+        stale_days: i64,
     },
 }
 
@@ -288,6 +329,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     title,
                     content,
                     tags,
+                    entry_type,
+                    sources,
                 } => {
                     let content = match content {
                         Some(c) => c,
@@ -299,9 +342,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     let tags = parse_tags(&tags.unwrap_or_default());
+                    let entry_type = entry_type.unwrap_or_else(|| "concept".into());
+                    let sources = parse_tags(&sources.unwrap_or_default());
                     engine
                         .wiki
-                        .write(&slug, &title, "concept", &tags, &[], &content)?;
+                        .write(&slug, &title, &entry_type, &tags, &sources, &content)?;
                     cli_output::wiki_saved(&slug);
                 }
                 WikiCommands::Read { slug } => {
@@ -318,11 +363,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     engine.wiki.delete(&slug)?;
                     cli_output::wiki_deleted(&slug);
                 }
-                WikiCommands::Search { query, tags, limit } => {
+                WikiCommands::Search { query, tags, entry_type, limit } => {
                     let tags = tags
                         .map(|t| parse_tags(&t))
                         .filter(|v| !v.is_empty());
                     let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
+                    let results: Vec<_> = match &entry_type {
+                        Some(t) => results.into_iter().filter(|(e, _)| &e.entry_type == t).collect(),
+                        None => results,
+                    };
                     let mapped: Vec<(String, Vec<String>, String, f64)> = results
                         .iter()
                         .map(|(e, score)| {
@@ -336,11 +385,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .collect();
                     cli_output::wiki_search_results(&query, &mapped);
                 }
-                WikiCommands::List { tags } => {
+                WikiCommands::List { tags, entry_type } => {
                     let tags = tags
                         .map(|t| parse_tags(&t))
                         .filter(|v| !v.is_empty());
                     let entries = engine.wiki.list(tags.as_deref());
+                    let entries: Vec<_> = match &entry_type {
+                        Some(t) => entries.into_iter().filter(|e| &e.entry_type == t).collect(),
+                        None => entries,
+                    };
                     let mapped: Vec<(String, String, Vec<String>, String)> = entries
                         .iter()
                         .map(|e| {
@@ -353,6 +406,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .collect();
                     cli_output::wiki_list(&mapped);
+                }
+                WikiCommands::Ingest { content, file, title, source_uri, area_hint } => {
+                    let text = match (content, file) {
+                        (Some(c), _) => c,
+                        (_, Some(f)) => std::fs::read_to_string(&f)?,
+                        _ => std::io::read_to_string(std::io::stdin())?,
+                    };
+                    let plan = engine.wiki.ingest(&text, source_uri.as_deref(), title.as_deref(), area_hint.as_deref())?;
+                    cli_output::wiki_ingest_plan(&plan.source_slug, &plan.related, &plan.neighbors, &plan.suggested_slugs);
+                }
+                WikiCommands::Query { query } => {
+                    let bundle = engine.wiki.query_bundle(&query, 10)?;
+                    println!("{bundle}");
+                }
+                WikiCommands::Lint { stale_days } => {
+                    let report = engine.wiki.lint_report(stale_days)?;
+                    println!("{report}");
                 }
             }
             engine.shutdown().await;

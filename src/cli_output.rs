@@ -164,6 +164,16 @@ pub fn wiki_list(entries: &[(String, String, Vec<String>, String)]) {
     println!("{table}\n");
 }
 
+pub fn wiki_ingest_plan(source: &str, related: &[(String, f32)], neighbors: &[String], suggested: &[String]) {
+    println!("\n  ingested as [[{source}]]\n");
+    println!("  related:");
+    for (s, score) in related { println!("    [[{s}]] ({score:.3})"); }
+    println!("  neighbors:");
+    for n in neighbors { println!("    [[{n}]]"); }
+    println!("  touch (max 15):");
+    for s in suggested { println!("    [[{s}]]"); }
+}
+
 pub fn wiki_search_results(query: &str, results: &[(String, Vec<String>, String, f64)]) {
     if results.is_empty() {
         println!(
