@@ -88,8 +88,10 @@ impl WikiStore {
 
         let mut on_disk: std::collections::HashSet<String> = std::collections::HashSet::new();
         collect_md_slugs(&self.wiki_dir, &self.wiki_dir, &mut on_disk);
+        on_disk.remove("index");
+        on_disk.remove("log");
 
-        entries.retain(|e| on_disk.contains(&e.slug));
+        entries.retain(|e| e.slug != "index" && e.slug != "log" && on_disk.contains(&e.slug));
 
         let missing: Vec<String> = on_disk.difference(&indexed).cloned().collect();
 
@@ -227,7 +229,7 @@ impl WikiStore {
         entries.retain(|e| e.slug != "index" && e.slug != "log");
         entries.sort_by(|a, b| b.updated.cmp(&a.updated));
         let mut md = String::from(
-            "---\ntitle: Index\ntype: index\ntags: \ncreated: \nupdated: \n---\n\n# Index\n",
+            "---\ntitle: Index\ntype: index\ntags: \nsources: \ncreated: \nupdated: \n---\n\n# Index\n",
         );
         let mut area = String::new();
         for e in &entries {
@@ -257,12 +259,12 @@ impl WikiStore {
         if !log_path.exists() {
             std::fs::write(
                 &log_path,
-                "---\ntitle: Log\ntype: log\ntags: \ncreated: \nupdated: \n---\n\n# Log\n",
+                "---\ntitle: Log\ntype: log\ntags: \nsources: \ncreated: \nupdated: \n---\n\n# Log\n",
             )?;
         }
         let now = chrono_now();
         let day = now.get(..10).unwrap_or(&now);
-        let line = format!("## [{day}] {op} | {slug} ({title})\n");
+        let line = format!("## [{day}] {op} | {title} ({slug})\n");
         use std::io::Write;
         std::fs::OpenOptions::new()
             .append(true)
@@ -408,11 +410,27 @@ fn collect_md_slugs(
     }
 }
 
+fn frontmatter_has_type(raw: &str) -> bool {
+    let trimmed = raw.trim_start();
+    let trimmed = trimmed.strip_prefix('\u{FEFF}').unwrap_or(trimmed);
+    let Some(after) = trimmed.strip_prefix("---") else {
+        return false;
+    };
+    let Some(end) = after.find("\n---") else {
+        return false;
+    };
+    after[..end]
+        .lines()
+        .any(|l| l.trim_start().starts_with("type:"))
+}
+
 fn ensure_type_field(raw: &str, name: &str) -> String {
-    if raw.contains("type:") {
+    if frontmatter_has_type(raw) {
         return raw.to_string();
     }
-    if let Some(body) = raw.strip_prefix("---") {
+    let trimmed = raw.trim_start();
+    let trimmed = trimmed.strip_prefix('\u{FEFF}').unwrap_or(trimmed);
+    if let Some(body) = trimmed.strip_prefix("---") {
         format!("---\ntype: concept{body}")
     } else {
         format!(
@@ -658,7 +676,42 @@ mod tests {
         let index = std::fs::read_to_string(dir.path().join("wiki/index.md")).unwrap();
         assert!(index.contains("[[concepts/foo]]"));
         let log = std::fs::read_to_string(dir.path().join("wiki/log.md")).unwrap();
-        assert!(log.contains("write | concepts/foo"));
+        assert!(log.contains("write | Foo (concepts/foo)"));
+        assert!(
+            store
+                .list(None)
+                .iter()
+                .all(|e| e.slug != "index" && e.slug != "log")
+        );
+        drop(store);
+        let reopened = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        assert!(
+            reopened
+                .list(None)
+                .iter()
+                .all(|e| e.slug != "index" && e.slug != "log")
+        );
+    }
+
+    #[test]
+    fn test_ensure_type_field_ignores_body_text() {
+        let with_real_type = "---\ntitle: T\ntype: adr\ntags: \ncreated: \nupdated: \n---\n\nBody";
+        assert_eq!(ensure_type_field(with_real_type, "x"), with_real_type);
+        let body_mentions_type =
+            "---\ntitle: T\ntags: \ncreated: \nupdated: \n---\n\nSee prototype: foo";
+        assert!(
+            ensure_type_field(body_mentions_type, "x").contains("\ntype: concept\n"),
+            "body-only 'prototype:' must not count as a type field"
+        );
+        let indented = "  ---\ntitle: T\ntags: \n---\n\nBody";
+        assert!(
+            ensure_type_field(indented, "x").starts_with("---\ntype: concept\n"),
+            "leading-whitespace frontmatter must still get a type line"
+        );
     }
 
     #[test]
