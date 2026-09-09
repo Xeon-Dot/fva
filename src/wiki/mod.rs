@@ -43,6 +43,7 @@ pub struct WikiStats {
     pub total_entries: usize,
 }
 
+#[derive(Debug, Clone)]
 pub struct IngestPlan {
     pub source_slug: String,
     pub related: Vec<(String, f32)>,  // (slug, score) 상위 10
@@ -354,7 +355,7 @@ impl WikiStore {
         title_hint: Option<&str>,
         area_hint: Option<&str>,
     ) -> Result<IngestPlan> {
-        let area = area_hint.unwrap_or("concept");
+        let area = normalize_area(area_hint.unwrap_or("concepts"));
         let base = slugify(title_hint.unwrap_or("untitled"));
         let mut slug = format!("sources/{base}");
         let mut n = 2;
@@ -401,7 +402,7 @@ impl WikiStore {
         if let Ok(idx) = std::fs::read_to_string(&index_path) {
             out.push_str("## Index\n");
             out.push_str(&idx.chars().take(4000).collect::<String>());
-            out.push_str("\n");
+            out.push('\n');
         }
         let hits = self.search(query, None, limit).unwrap_or_default();
         out.push_str(&format!("## Top {} semantic hits\n", hits.len()));
@@ -633,6 +634,19 @@ fn chrono_now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
+fn normalize_area(hint: &str) -> &str {
+    match hint.trim().to_ascii_lowercase().as_str() {
+        "concept" | "concepts" => "concepts",
+        "entity" | "entities" => "entities",
+        "analysis" | "analyses" => "analyses",
+        "adr" | "adrs" => "adrs",
+        "arch" => "arch",
+        "gotcha" | "gotchas" | "gotchas-" => "gotchas-",
+        "source" | "sources" => "sources",
+        _ => "concepts",
+    }
+}
+
 pub fn slugify(hint: &str) -> String {
     let mut s: String = hint
         .to_lowercase()
@@ -829,7 +843,7 @@ mod tests {
                 "Rust borrowing rules and lifetimes",
                 None,
                 Some("Borrowing"),
-                Some("concepts"),
+                Some("concept"),
             )
             .unwrap();
         assert!(plan.source_slug.starts_with("sources/"));
