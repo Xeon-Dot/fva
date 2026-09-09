@@ -433,6 +433,80 @@ impl WikiStore {
         Ok(out)
     }
 
+    pub fn lint_report(&self, stale_days: i64) -> Result<String> {
+        // ponytail: 전수스캔 O(n) + 유사쌍 O(n²). wiki-scale(<1k) 허용.
+        let entries = self.list(None);
+        let live: Vec<_> = entries.iter().filter(|e| e.slug != "index" && e.slug != "log").collect();
+        let slugs: std::collections::HashSet<&str> = live.iter().map(|e| e.slug.as_str()).collect();
+        // ponytail: owned String keys — borrowing the loop-local link would dangle.
+        let mut inbound: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut dead = Vec::new();
+        for e in &live {
+            for l in extract_wikilinks(&e.content) {
+                if slugs.contains(l.as_str()) {
+                    *inbound.entry(l).or_default() += 1;
+                } else {
+                    dead.push((e.slug.clone(), l));
+                }
+            }
+        }
+        let mut out = String::from("# Wiki lint\n");
+        out.push_str("\n## Orphans (no inbound links)\n");
+        for e in &live {
+            if e.entry_type != "source" && *inbound.get(e.slug.as_str()).unwrap_or(&0) == 0 {
+                out.push_str(&format!("- [[{}]] — {}\n", e.slug, e.title));
+            }
+        }
+        out.push_str("\n## Dead links\n");
+        for (from, to) in &dead {
+            out.push_str(&format!("- [[{from}]] → [[{to}]] (missing)\n"));
+        }
+        out.push_str("\n## Stale\n");
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(stale_days);
+        for e in &live {
+            if e.entry_type == "source" { continue; }
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&e.updated)
+                && dt.with_timezone(&chrono::Utc) < cutoff
+            {
+                    out.push_str(&format!("- [[{}]] — {} (updated {})\n", e.slug, e.title, e.updated));
+            }
+        }
+        out.push_str("\n## Contradiction candidates\n");
+        let vecs = self.entries.read().unwrap();
+        let mut pairs: Vec<(&str, &str, f32)> = Vec::new();
+        for i in 0..vecs.len() {
+            for j in (i + 1)..vecs.len() {
+                let s = cosine_similarity(&vecs[i].vector, &vecs[j].vector);
+                if s > 0.85 {
+                    pairs.push((vecs[i].slug.as_str(), vecs[j].slug.as_str(), s));
+                }
+            }
+        }
+        pairs.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+        for (a, b, s) in pairs.iter().take(20) {
+            // 반전 키워드 동시포함 쌍만 보고 (저비용 휴리스틱)
+            let ca = self.read(a).map(|e| e.content.to_lowercase()).unwrap_or_default();
+            let cb = self.read(b).map(|e| e.content.to_lowercase()).unwrap_or_default();
+            const NEG: [&str; 6] = ["not", "no", "never", "deprecated", "instead", "avoid"];
+            if NEG.iter().any(|w| ca.contains(w)) && NEG.iter().any(|w| cb.contains(w)) {
+                out.push_str(&format!("- [[{a}]] ↔ [[{b}]] (sim={s:.3})\n"));
+            }
+        }
+        out.push_str("\n## Thin areas (<3 entries)\n");
+        let mut areas: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for e in &live {
+            *areas.entry(e.slug.split('/').next().unwrap_or("general").to_string()).or_default() += 1;
+        }
+        let mut names: Vec<_> = areas.iter().collect();
+        names.sort();
+        for (name, count) in names {
+            if *count < 3 {
+                out.push_str(&format!("- {name}/ ({count} entries)\n"));
+            }
+        }
+        Ok(out)
+    }
+
     pub fn list(&self, tags_filter: Option<&[String]>) -> Vec<WikiEntry> {
         let entries = self.entries.read().unwrap();
         let mut results: Vec<WikiEntry> = entries
@@ -897,5 +971,20 @@ mod tests {
         assert!(moved.contains("type:"));
         assert!(moved.contains("Legacy body"));
         assert!(store.read("concepts/legacy-old-note").is_ok());
+    }
+
+    #[test]
+    fn test_lint_finds_orphan_and_dead_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        store.write("concepts/orphan", "Orphan", "concept", &[], &[], "lonely, see [[concepts/nowhere]]").unwrap();
+        store.write("concepts/hub", "Hub", "concept", &[], &[], "hub body").unwrap();
+        let report = store.lint_report(9999).unwrap();
+        assert!(report.contains("orphan"));
+        assert!(report.contains("concepts/nowhere"));
     }
 }
