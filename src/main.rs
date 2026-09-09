@@ -363,13 +363,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     engine.wiki.delete(&slug)?;
                     cli_output::wiki_deleted(&slug);
                 }
-                WikiCommands::Search { query, tags, entry_type, limit } => {
-                    let tags = tags
-                        .map(|t| parse_tags(&t))
-                        .filter(|v| !v.is_empty());
+                WikiCommands::Search {
+                    query,
+                    tags,
+                    entry_type,
+                    limit,
+                } => {
+                    let tags = tags.map(|t| parse_tags(&t)).filter(|v| !v.is_empty());
                     let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
                     let results: Vec<_> = match &entry_type {
-                        Some(t) => results.into_iter().filter(|(e, _)| &e.entry_type == t).collect(),
+                        Some(t) => results
+                            .into_iter()
+                            .filter(|(e, _)| &e.entry_type == t)
+                            .collect(),
                         None => results,
                     };
                     let mapped: Vec<(String, Vec<String>, String, f64)> = results
@@ -386,9 +392,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     cli_output::wiki_search_results(&query, &mapped);
                 }
                 WikiCommands::List { tags, entry_type } => {
-                    let tags = tags
-                        .map(|t| parse_tags(&t))
-                        .filter(|v| !v.is_empty());
+                    let tags = tags.map(|t| parse_tags(&t)).filter(|v| !v.is_empty());
                     let entries = engine.wiki.list(tags.as_deref());
                     let entries: Vec<_> = match &entry_type {
                         Some(t) => entries.into_iter().filter(|e| &e.entry_type == t).collect(),
@@ -407,14 +411,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .collect();
                     cli_output::wiki_list(&mapped);
                 }
-                WikiCommands::Ingest { content, file, title, source_uri, area_hint } => {
+                WikiCommands::Ingest {
+                    content,
+                    file,
+                    title,
+                    source_uri,
+                    area_hint,
+                } => {
                     let text = match (content, file) {
                         (Some(c), _) => c,
                         (_, Some(f)) => std::fs::read_to_string(&f)?,
                         _ => std::io::read_to_string(std::io::stdin())?,
                     };
-                    let plan = engine.wiki.ingest(&text, source_uri.as_deref(), title.as_deref(), area_hint.as_deref())?;
-                    cli_output::wiki_ingest_plan(&plan.source_slug, &plan.related, &plan.neighbors, &plan.suggested_slugs);
+                    let plan = engine.wiki.ingest(
+                        &text,
+                        source_uri.as_deref(),
+                        title.as_deref(),
+                        area_hint.as_deref(),
+                    )?;
+                    cli_output::wiki_ingest_plan(
+                        &plan.source_slug,
+                        &plan.related,
+                        &plan.neighbors,
+                        &plan.suggested_slugs,
+                    );
                 }
                 WikiCommands::Query { query } => {
                     let bundle = engine.wiki.query_bundle(&query, 10)?;
