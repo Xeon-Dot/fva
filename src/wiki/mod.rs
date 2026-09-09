@@ -16,7 +16,9 @@ use crate::error::{FvaError, Result};
 pub struct WikiEntry {
     pub slug: String,
     pub title: String,
+    pub entry_type: String,
     pub tags: Vec<String>,
+    pub sources: Vec<String>,
     pub created: String,
     pub updated: String,
     pub content: String,
@@ -152,7 +154,9 @@ impl WikiStore {
         let entry = WikiEntry {
             slug: slug.to_string(),
             title: title.to_string(),
+            entry_type: "concept".to_string(),
             tags: tags.to_vec(),
+            sources: Vec::new(),
             created,
             updated,
             content: content.to_string(),
@@ -247,7 +251,10 @@ fn validate_slug(slug: &str) -> Result<()> {
     if slug.is_empty() {
         return Err(FvaError::Wiki("slug cannot be empty".into()));
     }
-    if slug.contains("..") || slug.contains('/') || slug.contains('\\') || slug.contains('\0') {
+    if slug.contains("..") || slug.contains('\\') || slug.contains('\0') {
+        return Err(FvaError::Wiki(format!("invalid slug: {slug}")));
+    }
+    if slug.split('/').any(|s| s.is_empty()) {
         return Err(FvaError::Wiki(format!("invalid slug: {slug}")));
     }
     Ok(())
@@ -262,7 +269,7 @@ fn format_frontmatter(
 ) -> String {
     let tags_str = tags.join(", ");
     format!(
-        "---\ntitle: {title}\ntags: {tags_str}\ncreated: {created}\nupdated: {updated}\n---\n\n{content}\n"
+        "---\ntitle: {title}\ntype: concept\ntags: {tags_str}\nsources:\ncreated: {created}\nupdated: {updated}\n---\n\n{content}\n"
     )
 }
 
@@ -272,7 +279,9 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
         return Ok(WikiEntry {
             slug: slug.to_string(),
             title: slug.to_string(),
+            entry_type: "concept".to_string(),
             tags: Vec::new(),
+            sources: Vec::new(),
             created: String::new(),
             updated: String::new(),
             content: raw.to_string(),
@@ -290,7 +299,10 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
     #[derive(serde::Deserialize)]
     struct FrontMatter {
         title: Option<String>,
+        #[serde(rename = "type")]
+        entry_type: Option<String>,
         tags: Option<String>,
+        sources: Option<String>,
         created: Option<String>,
         updated: Option<String>,
     }
@@ -308,10 +320,22 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
         })
         .unwrap_or_default();
 
+    let sources = fm
+        .sources
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
     Ok(WikiEntry {
         slug: slug.to_string(),
         title: fm.title.unwrap_or_else(|| slug.to_string()),
+        entry_type: fm.entry_type.unwrap_or_else(|| "concept".to_string()),
         tags,
+        sources,
         created: fm.created.unwrap_or_default(),
         updated: fm.updated.unwrap_or_default(),
         content,
@@ -320,6 +344,19 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
 
 fn chrono_now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+pub fn slugify(hint: &str) -> String {
+    let mut s: String = hint
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    while s.contains("--") {
+        s = s.replace("--", "-");
+    }
+    let s = s.trim_matches('-').to_string();
+    if s.is_empty() { "untitled".into() } else { s }
 }
 
 #[cfg(test)]
@@ -349,7 +386,7 @@ mod tests {
         assert!(validate_slug("page_v2").is_ok());
         assert!(validate_slug("").is_err());
         assert!(validate_slug("../etc/passwd").is_err());
-        assert!(validate_slug("a/b").is_err());
+        assert!(validate_slug("a/b").is_ok());
     }
 
     #[test]
@@ -373,5 +410,24 @@ mod tests {
         let now = chrono_now();
         assert!(now.contains('T'));
         assert!(now.ends_with('Z'));
+    }
+
+    #[test]
+    fn test_parse_new_frontmatter() {
+        let raw = "---\ntitle: Foo\ntype: adr\ntags: rust\nsources: src/main.rs\ncreated: 2026-01-01T00:00:00Z\nupdated: 2026-01-02T00:00:00Z\n---\n\nBody [[concepts/bar]]";
+        let entry = parse_frontmatter("adrs/foo", raw).unwrap();
+        assert_eq!(entry.entry_type, "adr");
+        assert_eq!(entry.sources, vec!["src/main.rs"]);
+        assert_eq!(entry.content, "Body [[concepts/bar]]");
+    }
+
+    #[test]
+    fn test_slugify_and_validate() {
+        assert_eq!(slugify("Hello World_2!"), "hello-world-2");
+        assert_eq!(slugify("!!!"), "untitled");
+        assert!(validate_slug("concepts/foo").is_ok());
+        assert!(validate_slug("a//b").is_err());
+        assert!(validate_slug("../x").is_err());
+        assert!(validate_slug("a/b").is_ok());
     }
 }
