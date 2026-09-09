@@ -73,6 +73,7 @@ impl WikiStore {
             *store.entries.write().unwrap() = snapshot.entries;
         }
 
+        store.migrate_legacy()?;
         store.reconcile()?;
 
         Ok(store)
@@ -86,16 +87,7 @@ impl WikiStore {
             entries.iter().map(|e| e.slug.clone()).collect();
 
         let mut on_disk: std::collections::HashSet<String> = std::collections::HashSet::new();
-        if let Ok(rd) = std::fs::read_dir(&self.wiki_dir) {
-            for entry in rd.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|e| e == "md")
-                    && let Some(slug) = path.file_stem().and_then(|s| s.to_str())
-                {
-                    on_disk.insert(slug.to_string());
-                }
-            }
-        }
+        collect_md_slugs(&self.wiki_dir, &self.wiki_dir, &mut on_disk);
 
         entries.retain(|e| on_disk.contains(&e.slug));
 
@@ -135,11 +127,32 @@ impl WikiStore {
         Ok(())
     }
 
-    pub fn write(&self, slug: &str, title: &str, tags: &[String], content: &str) -> Result<()> {
+    pub fn write(
+        &self,
+        slug: &str,
+        title: &str,
+        entry_type: &str,
+        tags: &[String],
+        sources: &[String],
+        content: &str,
+    ) -> Result<()> {
         validate_slug(slug)?;
 
-        let now = chrono_now();
+        if slug == "index" || slug == "log" {
+            return Err(FvaError::Wiki(format!("slug '{slug}' is reserved")));
+        }
+
         let file_path = self.wiki_dir.join(format!("{slug}.md"));
+        if slug.starts_with("sources/") && file_path.exists() {
+            return Err(FvaError::Wiki(format!(
+                "source entry '{slug}' is immutable"
+            )));
+        }
+        if let Some(parent) = file_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let now = chrono_now();
 
         let (created, updated) = if file_path.exists() {
             let existing = self.read(slug)?;
@@ -148,20 +161,30 @@ impl WikiStore {
             (now.clone(), now.clone())
         };
 
-        let md = format_frontmatter(title, tags, &created, &updated, content);
+        let md = format_frontmatter(
+            title, entry_type, tags, sources, &created, &updated, content,
+        );
         std::fs::write(&file_path, md)?;
 
         let entry = WikiEntry {
             slug: slug.to_string(),
             title: title.to_string(),
-            entry_type: "concept".to_string(),
+            entry_type: entry_type.to_string(),
             tags: tags.to_vec(),
-            sources: Vec::new(),
+            sources: sources.to_vec(),
             created,
             updated,
             content: content.to_string(),
         };
         self.index_entry(&entry)?;
+        if slug != "index" && slug != "log" {
+            if let Err(e) = self.render_index() {
+                tracing::warn!("wiki render_index failed: {e}");
+            }
+            if let Err(e) = self.append_log("write", slug, title) {
+                tracing::warn!("wiki append_log failed: {e}");
+            }
+        }
         self.persist()?;
 
         Ok(())
@@ -180,10 +203,107 @@ impl WikiStore {
             return Err(FvaError::Wiki(format!("wiki entry '{slug}' not found")));
         }
 
+        let title = self
+            .read(slug)
+            .map(|e| e.title)
+            .unwrap_or_else(|_| slug.to_string());
         std::fs::remove_file(&file_path)?;
         self.entries.write().unwrap().retain(|e| e.slug != slug);
+        if slug != "index" && slug != "log" {
+            if let Err(e) = self.render_index() {
+                tracing::warn!("wiki render_index failed: {e}");
+            }
+            if let Err(e) = self.append_log("delete", slug, &title) {
+                tracing::warn!("wiki append_log failed: {e}");
+            }
+        }
         self.persist()?;
 
+        Ok(())
+    }
+
+    fn render_index(&self) -> Result<()> {
+        let mut entries = self.list(None);
+        entries.retain(|e| e.slug != "index" && e.slug != "log");
+        entries.sort_by(|a, b| b.updated.cmp(&a.updated));
+        let mut md = String::from(
+            "---\ntitle: Index\ntype: index\ntags: \ncreated: \nupdated: \n---\n\n# Index\n",
+        );
+        let mut area = String::new();
+        for e in &entries {
+            let a = e.slug.split('/').next().unwrap_or("general").to_string();
+            if a != area {
+                area = a.clone();
+                md.push_str(&format!("\n## {area}\n"));
+            }
+            let summary: String = e
+                .content
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("")
+                .chars()
+                .take(100)
+                .collect();
+            md.push_str(&format!("- [[{}]] — {} ({summary})\n", e.slug, e.title));
+        }
+        // index.md 자체는 frontmatter 최소형으로 직접 저장 (재귀가드: render는 write()를 호출하지 않음)
+        std::fs::write(self.wiki_dir.join("index.md"), md)?;
+        Ok(())
+    }
+
+    fn append_log(&self, op: &str, slug: &str, title: &str) -> Result<()> {
+        let log_path = self.wiki_dir.join("log.md");
+        if !log_path.exists() {
+            std::fs::write(
+                &log_path,
+                "---\ntitle: Log\ntype: log\ntags: \ncreated: \nupdated: \n---\n\n# Log\n",
+            )?;
+        }
+        let now = chrono_now();
+        let day = now.get(..10).unwrap_or(&now);
+        let line = format!("## [{day}] {op} | {slug} ({title})\n");
+        use std::io::Write;
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log_path)?
+            .write_all(line.as_bytes())?;
+        Ok(())
+    }
+
+    fn migrate_legacy(&self) -> Result<()> {
+        // ponytail: flat root scan on open; wiki-scale only.
+        let mut legacy: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&self.wiki_dir) {
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if path.is_file()
+                    && path.extension().is_some_and(|e| e == "md")
+                    && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                    && stem != "index"
+                    && stem != "log"
+                {
+                    legacy.push(stem.to_string());
+                }
+            }
+        }
+        if legacy.is_empty() {
+            return Ok(());
+        }
+        std::fs::create_dir_all(self.wiki_dir.join("concepts"))?;
+        for name in &legacy {
+            let raw = std::fs::read_to_string(self.wiki_dir.join(format!("{name}.md")))?;
+            let raw = ensure_type_field(&raw, name);
+            let mut target = format!("concepts/legacy-{name}");
+            let mut n = 2;
+            while self.wiki_dir.join(format!("{target}.md")).exists() {
+                target = format!("concepts/legacy-{name}-{n}");
+                n += 1;
+            }
+            std::fs::write(self.wiki_dir.join(format!("{target}.md")), raw)?;
+            std::fs::remove_file(self.wiki_dir.join(format!("{name}.md")))?;
+            self.entries.write().unwrap().retain(|e| e.slug != *name);
+        }
         Ok(())
     }
 
@@ -247,6 +367,60 @@ impl WikiStore {
     }
 }
 
+pub fn extract_wikilinks(content: &str) -> Vec<String> {
+    // ponytail: regex 크레이트 없이 수동 스캔. [[...]] 닫힘 없는 조각은 무시.
+    let mut out = Vec::new();
+    let mut rest = content;
+    while let Some(s) = rest.find("[[") {
+        let after = &rest[s + 2..];
+        if let Some(e) = after.find("]]") {
+            let link = after[..e].trim().to_string();
+            if !link.is_empty() && !out.contains(&link) {
+                out.push(link);
+            }
+            rest = &after[e + 2..];
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn collect_md_slugs(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    out: &mut std::collections::HashSet<String>,
+) {
+    // ponytail: 재귀 read_dir; wiki-scale에서 walkdir 의존성 불필요.
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_slugs(root, &path, out);
+        } else if path.extension().is_some_and(|e| e == "md")
+            && let Ok(rel) = path.strip_prefix(root)
+            && let Some(s) = rel.to_str()
+        {
+            out.insert(s.strip_suffix(".md").unwrap_or(s).to_string());
+        }
+    }
+}
+
+fn ensure_type_field(raw: &str, name: &str) -> String {
+    if raw.contains("type:") {
+        return raw.to_string();
+    }
+    if let Some(body) = raw.strip_prefix("---") {
+        format!("---\ntype: concept{body}")
+    } else {
+        format!(
+            "---\ntitle: {name}\ntype: concept\ntags: \nsources:\ncreated: \nupdated: \n---\n\n{raw}"
+        )
+    }
+}
+
 fn validate_slug(slug: &str) -> Result<()> {
     if slug.is_empty() {
         return Err(FvaError::Wiki("slug cannot be empty".into()));
@@ -262,14 +436,17 @@ fn validate_slug(slug: &str) -> Result<()> {
 
 fn format_frontmatter(
     title: &str,
+    entry_type: &str,
     tags: &[String],
+    sources: &[String],
     created: &str,
     updated: &str,
     content: &str,
 ) -> String {
     let tags_str = tags.join(", ");
+    let sources_str = sources.join(", ");
     format!(
-        "---\ntitle: {title}\ntype: concept\ntags: {tags_str}\nsources:\ncreated: {created}\nupdated: {updated}\n---\n\n{content}\n"
+        "---\ntitle: {title}\ntype: {entry_type}\ntags: {tags_str}\nsources: {sources_str}\ncreated: {created}\nupdated: {updated}\n---\n\n{content}\n"
     )
 }
 
@@ -393,7 +570,9 @@ mod tests {
     fn test_roundtrip() {
         let md = format_frontmatter(
             "My Title",
+            "concept",
             &["tag1".into(), "tag2".into()],
+            &["src/main.rs".into()],
             "2024-01-01T00:00:00Z",
             "2024-01-02T00:00:00Z",
             "Some content here",
@@ -401,6 +580,7 @@ mod tests {
         let entry = parse_frontmatter("test", &md).unwrap();
         assert_eq!(entry.title, "My Title");
         assert_eq!(entry.tags, vec!["tag1", "tag2"]);
+        assert_eq!(entry.sources, vec!["src/main.rs"]);
         assert_eq!(entry.content, "Some content here");
     }
 
@@ -429,5 +609,77 @@ mod tests {
         assert!(validate_slug("a//b").is_err());
         assert!(validate_slug("../x").is_err());
         assert!(validate_slug("a/b").is_ok());
+    }
+
+    #[test]
+    fn test_extract_wikilinks() {
+        let links = extract_wikilinks("see [[concepts/a]] and [[adrs/b]] plus [[concepts/a]]");
+        assert_eq!(links, vec!["concepts/a", "adrs/b"]);
+    }
+
+    #[test]
+    fn test_write_blocks_reserved_and_source_rewrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        assert!(store.write("index", "I", "index", &[], &[], "x").is_err());
+        assert!(store.write("log", "L", "log", &[], &[], "x").is_err());
+        store
+            .write("sources/s1", "S", "source", &[], &[], "raw")
+            .unwrap();
+        assert!(
+            store
+                .write("sources/s1", "S", "source", &[], &[], "raw2")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_write_maintains_index_and_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        store
+            .write(
+                "concepts/foo",
+                "Foo",
+                "concept",
+                &["rust".into()],
+                &[],
+                "Body",
+            )
+            .unwrap();
+        let index = std::fs::read_to_string(dir.path().join("wiki/index.md")).unwrap();
+        assert!(index.contains("[[concepts/foo]]"));
+        let log = std::fs::read_to_string(dir.path().join("wiki/log.md")).unwrap();
+        assert!(log.contains("write | concepts/foo"));
+    }
+
+    #[test]
+    fn test_migrate_legacy_moves_root_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let wiki_dir = dir.path().join("wiki");
+        std::fs::create_dir_all(&wiki_dir).unwrap();
+        std::fs::write(
+            wiki_dir.join("old-note.md"),
+            "---\ntitle: Old\ntags: \ncreated: \nupdated: \n---\n\nLegacy body",
+        )
+        .unwrap();
+        let store = WikiStore::open(
+            wiki_dir.clone(),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        assert!(!wiki_dir.join("old-note.md").exists());
+        let moved = std::fs::read_to_string(wiki_dir.join("concepts/legacy-old-note.md")).unwrap();
+        assert!(moved.contains("type:"));
+        assert!(moved.contains("Legacy body"));
+        assert!(store.read("concepts/legacy-old-note").is_ok());
     }
 }

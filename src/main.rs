@@ -299,7 +299,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     let tags = parse_tags(&tags.unwrap_or_default());
-                    engine.wiki.write(&slug, &title, &tags, &content)?;
+                    engine
+                        .wiki
+                        .write(&slug, &title, "concept", &tags, &[], &content)?;
                     cli_output::wiki_saved(&slug);
                 }
                 WikiCommands::Read { slug } => {

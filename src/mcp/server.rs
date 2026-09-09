@@ -485,7 +485,14 @@ impl FvaServer {
 
         self.engine
             .wiki
-            .write(&params.slug, &params.title, &tags, &params.content)
+            .write(
+                &params.slug,
+                &params.title,
+                "concept",
+                &tags,
+                &[],
+                &params.content,
+            )
             .map_err(|e| ErrorData::internal_error(format!("wiki_write failed: {e}"), None))?;
 
         Ok(empty_result(format!(
