@@ -43,6 +43,13 @@ pub struct WikiStats {
     pub total_entries: usize,
 }
 
+pub struct IngestPlan {
+    pub source_slug: String,
+    pub related: Vec<(String, f32)>,  // (slug, score) 상위 10
+    pub neighbors: Vec<String>,       // 관련페이지의 1-hop [[링크]]
+    pub suggested_slugs: Vec<String>, // 최대 15
+}
+
 pub struct WikiStore {
     wiki_dir: PathBuf,
     embedder: Arc<dyn Embedder>,
@@ -338,6 +345,91 @@ impl WikiStore {
         }
 
         Ok(results)
+    }
+
+    pub fn ingest(
+        &self,
+        content: &str,
+        source_uri: Option<&str>,
+        title_hint: Option<&str>,
+        area_hint: Option<&str>,
+    ) -> Result<IngestPlan> {
+        let area = area_hint.unwrap_or("concept");
+        let base = slugify(title_hint.unwrap_or("untitled"));
+        let mut slug = format!("sources/{base}");
+        let mut n = 2;
+        while self.wiki_dir.join(format!("{slug}.md")).exists() {
+            slug = format!("sources/{base}-{n}");
+            n += 1;
+        }
+        let title = title_hint.unwrap_or("Untitled source").to_string();
+        let src_tag = source_uri.map(|u| vec![u.to_string()]).unwrap_or_default();
+        self.write(&slug, &title, "source", &[], &src_tag, content)?;
+        self.append_log("ingest", &slug, &title).ok();
+
+        let hits = self.search(content, None, 10).unwrap_or_default();
+        let mut neighbors = Vec::new();
+        for (entry, _) in &hits {
+            for l in extract_wikilinks(&entry.content) {
+                if !neighbors.contains(&l) {
+                    neighbors.push(l);
+                }
+            }
+        }
+        let mut suggested: Vec<String> = hits
+            .iter()
+            .map(|(e, _)| e.slug.clone())
+            .filter(|s| s != &slug)
+            .take(14)
+            .collect();
+        let fresh = format!("{area}/{base}");
+        if !suggested.contains(&fresh) {
+            suggested.insert(0, fresh);
+        }
+        suggested.truncate(15);
+        Ok(IngestPlan {
+            source_slug: slug,
+            related: hits.into_iter().map(|(e, s)| (e.slug, s)).collect(),
+            neighbors,
+            suggested_slugs: suggested,
+        })
+    }
+
+    pub fn query_bundle(&self, query: &str, limit: usize) -> Result<String> {
+        let mut out = String::new();
+        let index_path = self.wiki_dir.join("index.md");
+        if let Ok(idx) = std::fs::read_to_string(&index_path) {
+            out.push_str("## Index\n");
+            out.push_str(&idx.chars().take(4000).collect::<String>());
+            out.push_str("\n");
+        }
+        let hits = self.search(query, None, limit).unwrap_or_default();
+        out.push_str(&format!("## Top {} semantic hits\n", hits.len()));
+        for (i, (e, score)) in hits.iter().enumerate() {
+            if i < 3 {
+                out.push_str(&format!(
+                    "\n### [[{}]] — {} (score={:.3})\n{}\n",
+                    e.slug, e.title, score, e.content
+                ));
+                let nb = extract_wikilinks(&e.content);
+                if !nb.is_empty() {
+                    out.push_str(&format!(
+                        "links: {}\n",
+                        nb.iter()
+                            .map(|l| format!("[[{l}]]"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    ));
+                }
+            } else {
+                let preview: String = e.content.chars().take(200).collect();
+                out.push_str(&format!(
+                    "\n- [[{}]] — {} (score={:.3}) {preview}\n",
+                    e.slug, e.title, score
+                ));
+            }
+        }
+        Ok(out)
     }
 
     pub fn list(&self, tags_filter: Option<&[String]>) -> Vec<WikiEntry> {
@@ -712,6 +804,63 @@ mod tests {
             ensure_type_field(indented, "x").starts_with("---\ntype: concept\n"),
             "leading-whitespace frontmatter must still get a type line"
         );
+    }
+
+    #[test]
+    fn test_ingest_returns_plan() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        store
+            .write(
+                "concepts/rust-ownership",
+                "Ownership",
+                "concept",
+                &["rust".into()],
+                &[],
+                "Ownership and borrowing [[concepts/borrowck]]",
+            )
+            .unwrap();
+        let plan = store
+            .ingest(
+                "Rust borrowing rules and lifetimes",
+                None,
+                Some("Borrowing"),
+                Some("concepts"),
+            )
+            .unwrap();
+        assert!(plan.source_slug.starts_with("sources/"));
+        assert!(!plan.related.is_empty());
+        assert!(
+            plan.suggested_slugs
+                .contains(&"concepts/borrowing".to_string())
+        );
+    }
+
+    #[test]
+    fn test_query_bundle_includes_index_and_hits() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        store
+            .write(
+                "concepts/foo",
+                "Foo",
+                "concept",
+                &["rust".into()],
+                &[],
+                "Foo body about ownership",
+            )
+            .unwrap();
+        let bundle = store.query_bundle("ownership", 5).unwrap();
+        assert!(bundle.contains("## Index"));
+        assert!(bundle.contains("concepts/foo"));
     }
 
     #[test]
