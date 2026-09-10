@@ -488,7 +488,11 @@ impl WikiStore {
             let ca = self.read(a).map(|e| e.content.to_lowercase()).unwrap_or_default();
             let cb = self.read(b).map(|e| e.content.to_lowercase()).unwrap_or_default();
             const NEG: [&str; 6] = ["not", "no", "never", "deprecated", "instead", "avoid"];
-            if NEG.iter().any(|w| ca.contains(w)) && NEG.iter().any(|w| cb.contains(w)) {
+            let has_neg = |c: &str| {
+                c.split(|ch: char| !ch.is_alphanumeric())
+                    .any(|tok| NEG.contains(&tok))
+            };
+            if has_neg(&ca) && has_neg(&cb) {
                 out.push_str(&format!("- [[{a}]] ↔ [[{b}]] (sim={s:.3})\n"));
             }
         }

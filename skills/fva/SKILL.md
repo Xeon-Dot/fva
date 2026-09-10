@@ -112,7 +112,7 @@ Use `wiki_query` to recall saved knowledge in future sessions (drill down with `
 
 ### Pagination
 
-Tools support `maxResults` and `offset`. When output contains `offset: N`, pass `offset: N` on the next call to fetch the next page.
+Code tools + `wiki_search`/`wiki_list` support `maxResults`/`offset`. `wiki_query` takes `maxResults` only (no `offset`); `wiki_ingest` takes content/source params; `wiki_lint` takes `stale_days`. When output contains `offset: N`, pass `offset: N` on the next call to fetch the next page.
 
 ## CLI Fallback
 
@@ -125,7 +125,7 @@ fva index --path .
 fva wiki query "how is auth wired" --path .
 fva wiki ingest --file notes.md --title "design notes" --source-uri <path-or-url> --area-hint concept --path .
 fva wiki lint --stale-days 180 --path .
-fva wiki write <slug> --title "..." --type concept --tags ... --content ... --path .
+fva wiki write <slug> --title "..." --type concept --tags ... --sources ... --content ... --path .
 # --type values: source|entity|concept|analysis|adr|arch|gotcha (default: concept)
 ```
 

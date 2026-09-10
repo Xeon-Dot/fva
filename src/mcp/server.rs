@@ -39,7 +39,8 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "## Wiki — persistent knowledge base (use proactively)\n",
     "\n",
     "- **wiki_write** — Create/update an entry (`slug`, `title`, `content` Markdown, `tags` comma-separated). Save anything useful: architecture, gotchas, conventions, patterns, build/dep notes. Knowledge not saved is knowledge lost.\n",
-    "- **wiki_search** — Semantic search over wiki entries. Call before starting a task to recall prior knowledge. Params: `query`, `tags`, `maxResults`.\n",
+    "- **wiki_query** — Question-answering over wiki entries (index + top semantic hits). Call before starting a task to recall prior knowledge. Params: `query`, `maxResults`.\n",
+    "- **wiki_search** — Low-level lexical/semantic search over wiki entries with tag filtering. Fallback when `wiki_query` is too broad. Returns matching entries with content previews and relevance scores. Params: `query`, `tags`, `maxResults`.\n",
     "- **wiki_read** — Read one entry by `slug` (full Markdown + metadata).\n",
     "- **wiki_list** — List all entries, optionally filtered by `tags` (comma-separated).\n",
     "- **wiki_delete** — Delete an entry by `slug`.\n",
@@ -50,7 +51,7 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
     "- Grep bare identifiers only: `MyHandler` not `fn MyHandler` — FFF expands definitions automatically.\n",
     "- Scope with `path` on `hybrid_search` / `get_smart_context` when the target file or directory is known.\n",
     "- Paginate with `maxResults` / `offset`; when output contains `offset: N`, pass `offset: N` on the next call.\n",
-    "- Use `wiki_write` liberally during any task; use `wiki_search` at task start.\n",
+    "- Use `wiki_write` liberally during any task; use `wiki_query` at task start.\n",
 );
 
 fn empty_result(msg: String) -> CallToolResult {
@@ -509,7 +510,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_write",
-        description = "Create or update a wiki knowledge entry (persistent, Markdown, auto-indexed for semantic search). Use freely and proactively — save architecture, decisions, gotchas, conventions, patterns, build/dep notes, or any context worth remembering. Knowledge not saved is knowledge lost. Params: slug (unique id), title, content (Markdown), tags (comma-separated)."
+        description = "Create or update a wiki knowledge entry (persistent, Markdown, auto-indexed for semantic search). Use freely and proactively — save architecture, decisions, gotchas, conventions, patterns, build/dep notes, or any context worth remembering. Knowledge not saved is knowledge lost. Params: slug (unique id), title, content (Markdown), tags (comma-separated), entry_type (source|entity|concept|analysis|adr|arch|gotcha, default concept), sources (comma-separated)."
     )]
     fn wiki_write(
         &self,
@@ -575,7 +576,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_search",
-        description = "Semantic search over wiki knowledge entries with tag filtering. Use at task start to recall prior decisions, patterns, and gotchas. Returns matching entries with content previews and relevance scores. Params: query (required), tags (comma-separated filter), maxResults."
+        description = "Low-level lexical/semantic search over wiki knowledge entries with tag filtering. Prefer wiki_query for question-answering at task start; use this as fallback for raw recall. Returns matching entries with content previews and relevance scores. Params: query (required), tags (comma-separated filter), maxResults."
     )]
     fn wiki_search(
         &self,

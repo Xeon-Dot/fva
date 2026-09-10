@@ -70,7 +70,9 @@ query는 `index.md`→개별 페이지로 드릴다운하며, 좋은 답변은 �
 - ingest: `wiki_ingest(content, source_uri?)` → slugify → `sources/*` 저장 →
   embed+Top10+1hop → plan 반환 → 에이전트 `wiki_write` 1~15회 →
   각 write마다 벡터 재인덱스+index 재생성+log append.
-  로그: ingest시 `## [날짜] ingest | 제목 (sources/slug)` 1줄,
+  로그: ingest시 2줄 — 내부 `write()`가 `## [날짜] write | 제목 (sources/slug)`를,
+  이어서 `ingest()`가 `## [날짜] ingest | 제목 (sources/slug)`를 append
+  (구현 `src/wiki/mod.rs:368-369`, Task 7 고정 동작 — 본 §의 기존 "1줄" 기술 정정),
   후속 write마다 `## [날짜] write | slug`.
 - query: 읽기전용. 좋은 답변은 에이전트가 `wiki_write`로 파일백 →
   `## [날짜] fileback | slug`.
