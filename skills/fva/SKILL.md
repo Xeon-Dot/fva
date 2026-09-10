@@ -71,11 +71,16 @@ Use in this priority order:
 
 Persist any useful information across sessions. Agents **MUST** use wiki proactively — knowledge not saved is knowledge lost.
 
-10. `wiki_write` — Create/update an entry (`slug`, `title`, `content` Markdown, `tags` comma-separated). Auto-indexed for semantic search.
-11. `wiki_search` — Semantic search over wiki entries with tag filtering. **Call at task start** to recall prior knowledge. Params: `query`, `tags`, `maxResults`.
+10. `wiki_write` — Create/update an entry (`slug`, `title`, `content` Markdown, `tags` comma-separated, `entry_type`: `source|entity|concept|analysis|adr|arch|gotcha` default `concept`, `sources` comma-separated paths/URLs). Auto-indexed for semantic search.
+11. `wiki_search` — Semantic search over wiki entries with tag/type filtering. Use when the `wiki_query` bundle is not enough. Params: `query`, `tags`, `entry_type` (same 7 values), `maxResults`.
 12. `wiki_read` — Read one entry by `slug` (full Markdown + metadata).
-13. `wiki_list` — List all entries, optionally filtered by `tags`.
+13. `wiki_list` — List all entries, optionally filtered by `tags` and `entry_type`.
 14. `wiki_delete` — Delete an entry by `slug`.
+15. `wiki_query` — Index-first lookup (Karpathy-style, default). Returns `index.md` + top semantic hits + 1-hop `[[slug]]` neighbors in one bundle. Start every task here, not `wiki_search`. Drill down with `wiki_read`. Params: `query` (required), `maxResults`.
+16. `wiki_ingest` — Ingest a source. Params: `content` (required), `source_uri`, `title_hint`, `area_hint`. Saves raw text under `sources/` (immutable) and returns a plan of up to 15 pages to touch. Finalize the summary with `wiki_write` + `[[slug]]` cross-links.
+17. `wiki_lint` — Periodic hygiene check (orphans, dead `[[links]]`, stale entries, contradiction candidates, thin areas). Report only — fix things yourself. Params: `stale_days` (default 180).
+
+Rules: never edit `sources/*`, never hand-edit `index`/`log`, file good answers back with `wiki_write`.
 
 **Save everything worth remembering:**
 
@@ -84,7 +89,7 @@ Persist any useful information across sessions. Agents **MUST** use wiki proacti
 - File layouts, build steps, dependency notes, environment quirks
 - Any information that helps a future session understand the codebase faster
 
-Use `wiki_search` to recall saved knowledge in future sessions.
+Use `wiki_query` to recall saved knowledge in future sessions (drill down with `wiki_read`); use `wiki_search` for raw semantic search when the bundle is not enough.
 
 ### Tool Selection Guide
 
@@ -99,7 +104,10 @@ Use `wiki_search` to recall saved knowledge in future sessions.
 | Exact identifier in text     | `grep` (only if FVA unavailable)       |
 | Find file by partial path    | `find_files` (only if FVA unavailable) |
 | Save any useful knowledge    | `wiki_write`                           |
-| Recall saved knowledge       | `wiki_search`                          |
+| Recall saved knowledge       | `wiki_query`                           |
+| Raw semantic recall          | `wiki_search`                          |
+| Ingest a source              | `wiki_ingest`                          |
+| Wiki hygiene check           | `wiki_lint`                            |
 | Browse all saved knowledge   | `wiki_list`                            |
 
 ### Pagination
@@ -114,6 +122,11 @@ Only when MCP is unavailable:
 fva search "authentication handler" --path . --limit 10
 fva status --path .
 fva index --path .
+fva wiki query "how is auth wired" --path .
+fva wiki ingest --file notes.md --title "design notes" --source-uri <path-or-url> --area-hint concept --path .
+fva wiki lint --stale-days 180 --path .
+fva wiki write <slug> --title "..." --type concept --tags ... --content ... --path .
+# --type values: source|entity|concept|analysis|adr|arch|gotcha (default: concept)
 ```
 
 ## Rules (Mandatory)
@@ -124,7 +137,7 @@ fva index --path .
 - Grep bare identifiers only — FFF expands definitions automatically.
 - Scope with `path` on `hybrid_search` / `get_smart_context` when the target file is known.
 - Check `index_status` if searches return empty or stale results.
-- Use `wiki_write` liberally during tasks; use `wiki_search` at task start.
+- Use `wiki_write` liberally during tasks; start tasks with `wiki_query`, file good answers back with `wiki_write`.
 
 ## Configuration
 
