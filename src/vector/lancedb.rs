@@ -98,11 +98,7 @@ impl LanceDbVectorStore {
 }
 
 impl LanceDbVectorStore {
-    pub async fn upsert_chunks(
-        &self,
-        chunks: &[CodeChunk],
-        vectors: &[Vec<f32>],
-    ) -> Result<()> {
+    pub async fn upsert_chunks(&self, chunks: &[CodeChunk], vectors: &[Vec<f32>]) -> Result<()> {
         if chunks.len() != vectors.len() {
             return Err(FvaError::Other(format!(
                 "chunk/vector count mismatch: {} vs {}",
@@ -182,10 +178,7 @@ impl LanceDbVectorStore {
     }
 
     pub async fn remove_file(&self, relative_path: &str) -> Result<()> {
-        let sql = format!(
-            "relative_path = '{}'",
-            escape_sql_literal(relative_path)
-        );
+        let sql = format!("relative_path = '{}'", escape_sql_literal(relative_path));
         self.table
             .delete(&sql)
             .await
@@ -193,11 +186,7 @@ impl LanceDbVectorStore {
         Ok(())
     }
 
-    pub async fn search(
-        &self,
-        query_vector: &[f32],
-        limit: usize,
-    ) -> Result<Vec<VectorHit>> {
+    pub async fn search(&self, query_vector: &[f32], limit: usize) -> Result<Vec<VectorHit>> {
         if limit == 0 {
             return Ok(Vec::new());
         }

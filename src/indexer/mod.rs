@@ -10,8 +10,8 @@ use std::time::Duration;
 
 use ignore::WalkBuilder;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::sync::RwLock;
 use rayon::prelude::*;
+use std::sync::RwLock;
 
 use self::chunker::{CodeChunk, chunk_file};
 use self::parser::{AstParser, is_indexable};

@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use std::sync::RwLock;
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 
 use crate::embedding::{Embedder, cosine_similarity};
 use crate::error::{FvaError, Result};
@@ -436,10 +436,14 @@ impl WikiStore {
     pub fn lint_report(&self, stale_days: i64) -> Result<String> {
         // ponytail: 전수스캔 O(n) + 유사쌍 O(n²). wiki-scale(<1k) 허용.
         let entries = self.list(None);
-        let live: Vec<_> = entries.iter().filter(|e| e.slug != "index" && e.slug != "log").collect();
+        let live: Vec<_> = entries
+            .iter()
+            .filter(|e| e.slug != "index" && e.slug != "log")
+            .collect();
         let slugs: std::collections::HashSet<&str> = live.iter().map(|e| e.slug.as_str()).collect();
         // ponytail: owned String keys — borrowing the loop-local link would dangle.
-        let mut inbound: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut inbound: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         let mut dead = Vec::new();
         for e in &live {
             for l in extract_wikilinks(&e.content) {
@@ -464,11 +468,16 @@ impl WikiStore {
         out.push_str("\n## Stale\n");
         let cutoff = chrono::Utc::now() - chrono::Duration::days(stale_days);
         for e in &live {
-            if e.entry_type == "source" { continue; }
+            if e.entry_type == "source" {
+                continue;
+            }
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&e.updated)
                 && dt.with_timezone(&chrono::Utc) < cutoff
             {
-                    out.push_str(&format!("- [[{}]] — {} (updated {})\n", e.slug, e.title, e.updated));
+                out.push_str(&format!(
+                    "- [[{}]] — {} (updated {})\n",
+                    e.slug, e.title, e.updated
+                ));
             }
         }
         out.push_str("\n## Contradiction candidates\n");
@@ -485,8 +494,14 @@ impl WikiStore {
         pairs.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
         for (a, b, s) in pairs.iter().take(20) {
             // 반전 키워드 동시포함 쌍만 보고 (저비용 휴리스틱)
-            let ca = self.read(a).map(|e| e.content.to_lowercase()).unwrap_or_default();
-            let cb = self.read(b).map(|e| e.content.to_lowercase()).unwrap_or_default();
+            let ca = self
+                .read(a)
+                .map(|e| e.content.to_lowercase())
+                .unwrap_or_default();
+            let cb = self
+                .read(b)
+                .map(|e| e.content.to_lowercase())
+                .unwrap_or_default();
             const NEG: [&str; 6] = ["not", "no", "never", "deprecated", "instead", "avoid"];
             let has_neg = |c: &str| {
                 c.split(|ch: char| !ch.is_alphanumeric())
@@ -499,7 +514,9 @@ impl WikiStore {
         out.push_str("\n## Thin areas (<3 entries)\n");
         let mut areas: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for e in &live {
-            *areas.entry(e.slug.split('/').next().unwrap_or("general").to_string()).or_default() += 1;
+            *areas
+                .entry(e.slug.split('/').next().unwrap_or("general").to_string())
+                .or_default() += 1;
         }
         let mut names: Vec<_> = areas.iter().collect();
         names.sort();
@@ -985,8 +1002,19 @@ mod tests {
             Arc::new(crate::embedding::LocalEmbedder::new(128)),
         )
         .unwrap();
-        store.write("concepts/orphan", "Orphan", "concept", &[], &[], "lonely, see [[concepts/nowhere]]").unwrap();
-        store.write("concepts/hub", "Hub", "concept", &[], &[], "hub body").unwrap();
+        store
+            .write(
+                "concepts/orphan",
+                "Orphan",
+                "concept",
+                &[],
+                &[],
+                "lonely, see [[concepts/nowhere]]",
+            )
+            .unwrap();
+        store
+            .write("concepts/hub", "Hub", "concept", &[], &[], "hub body")
+            .unwrap();
         let report = store.lint_report(9999).unwrap();
         assert!(report.contains("orphan"));
         assert!(report.contains("concepts/nowhere"));

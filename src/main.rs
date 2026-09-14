@@ -353,7 +353,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let entry = engine.wiki.read(&slug)?;
                     cli_output::wiki_read(
                         &entry.slug,
+                        &entry.entry_type,
                         &entry.tags,
+                        &entry.sources,
                         &entry.created,
                         &entry.updated,
                         &entry.content,
@@ -398,18 +400,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(t) => entries.into_iter().filter(|e| &e.entry_type == t).collect(),
                         None => entries,
                     };
-                    let mapped: Vec<(String, String, Vec<String>, String)> = entries
-                        .iter()
-                        .map(|e| {
-                            (
-                                e.slug.clone(),
-                                e.title.clone(),
-                                e.tags.clone(),
-                                e.updated.clone(),
-                            )
-                        })
-                        .collect();
-                    cli_output::wiki_list(&mapped);
+                    cli_output::wiki_list(&entries);
                 }
                 WikiCommands::Ingest {
                     content,

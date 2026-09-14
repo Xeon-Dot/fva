@@ -71,7 +71,9 @@ impl ChunkStore {
         inner
             .chunks_by_file
             .insert(relative_path.to_string(), chunks);
-        inner.file_hashes.insert(relative_path.to_string(), hash_str);
+        inner
+            .file_hashes
+            .insert(relative_path.to_string(), hash_str);
     }
 
     pub fn needs_reindex(&self, relative_path: &str, content_hash: &Hash) -> bool {
@@ -108,7 +110,12 @@ impl ChunkStore {
 
     /// O(1) chunk lookup by ID.
     pub fn chunk_by_id(&self, chunk_id: &str) -> Option<CodeChunk> {
-        self.inner.read().unwrap().chunks_by_id.get(chunk_id).cloned()
+        self.inner
+            .read()
+            .unwrap()
+            .chunks_by_id
+            .get(chunk_id)
+            .cloned()
     }
 
     pub fn search_chunks(&self, query: &str) -> Vec<CodeChunk> {

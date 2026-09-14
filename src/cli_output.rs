@@ -5,6 +5,7 @@ use crate::graph::GraphStats;
 use crate::indexer::store::IndexStats;
 use crate::query::HybridHit;
 use crate::vector::VectorStats;
+use crate::wiki::WikiEntry;
 
 pub fn version(v: &str) {
     println!(
@@ -113,15 +114,28 @@ pub fn wiki_deleted(slug: &str) {
     );
 }
 
-pub fn wiki_read(slug: &str, tags: &[String], created: &str, updated: &str, content: &str) {
+pub fn wiki_read(
+    slug: &str,
+    entry_type: &str,
+    tags: &[String],
+    sources: &[String],
+    created: &str,
+    updated: &str,
+    content: &str,
+) {
     println!(
         "\n  {} {}",
         style("◆").cyan().bold(),
         style(slug).bold().white()
     );
+    println!("  {}", style(format!("type: {entry_type}")).dim());
     if !tags.is_empty() {
         println!("  {}", style(format!("tags: {}", tags.join(", "))).dim());
     }
+    println!(
+        "  {}",
+        style(format!("sources: {}", sources.join(", "))).dim()
+    );
     println!(
         "  {} · {}",
         style(format!("created: {created}")).dim(),
@@ -134,7 +148,7 @@ pub fn wiki_read(slug: &str, tags: &[String], created: &str, updated: &str, cont
     println!();
 }
 
-pub fn wiki_list(entries: &[(String, String, Vec<String>, String)]) {
+pub fn wiki_list(entries: &[WikiEntry]) {
     if entries.is_empty() {
         println!("\n  {}\n", style("no wiki entries").dim());
         return;
@@ -147,16 +161,20 @@ pub fn wiki_list(entries: &[(String, String, Vec<String>, String)]) {
         .set_header(vec![
             Cell::new("Slug").fg(Color::Cyan),
             Cell::new("Title").fg(Color::Cyan),
+            Cell::new("Type").fg(Color::Cyan),
             Cell::new("Tags").fg(Color::Cyan),
+            Cell::new("Sources").fg(Color::Cyan),
             Cell::new("Updated").fg(Color::Cyan),
         ]);
 
-    for (slug, title, tags, updated) in entries {
+    for e in entries {
         table.add_row(vec![
-            slug.as_str(),
-            title.as_str(),
-            &tags.join(", "),
-            updated.as_str(),
+            e.slug.as_str(),
+            e.title.as_str(),
+            e.entry_type.as_str(),
+            &e.tags.join(", "),
+            &e.sources.join(", "),
+            e.updated.as_str(),
         ]);
     }
 

@@ -18,20 +18,20 @@ Fuses FFF file search, vector semantic search, and call graph traversal (3-stage
 
 Token-budget context builder that combines hybrid search + call graph + file context into a compact, ranked answer. Call before editing code to understand what to change.
 
-| Parameter    | Type   | Required       | Notes                          |
-| ------------ | ------ | -------------- | ------------------------------ |
-| `query`      | string | yes            | Task description or question   |
-| `path`       | string | no             | File hint (when target is known) |
-| `maxResults` | number | no             | Default 20                     |
+| Parameter    | Type   | Required | Notes                            |
+| ------------ | ------ | -------- | -------------------------------- |
+| `query`      | string | yes      | Task description or question     |
+| `path`       | string | no       | File hint (when target is known) |
+| `maxResults` | number | no       | Default 20                       |
 
 ## semantic_search — Conceptual search
 
 Pure embedding search over AST chunks. Best when keyword search fails and you need concepts like "auth middleware" or "retry logic".
 
-| Parameter    | Type   | Required | Notes                                     |
-| ------------ | ------ | -------- | ----------------------------------------- |
-| `query`      | string | yes      | Natural language concept                  |
-| `maxResults` | number | no       | Default 20                                |
+| Parameter    | Type   | Required | Notes                    |
+| ------------ | ------ | -------- | ------------------------ |
+| `query`      | string | yes      | Natural language concept |
+| `maxResults` | number | no       | Default 20               |
 
 Uses the configured embedder (`local` hash by default, or `voyage` when set).
 
@@ -39,10 +39,10 @@ Uses the configured embedder (`local` hash by default, or `voyage` when set).
 
 Look up a symbol by exact name; returns full AST chunks with source code (functions, structs, classes, methods).
 
-| Parameter    | Type   | Required | Notes        |
-| ------------ | ------ | -------- | ------------ |
-| `symbol`     | string | yes      | Symbol name  |
-| `maxResults` | number | no       | Default 20   |
+| Parameter    | Type   | Required | Notes       |
+| ------------ | ------ | -------- | ----------- |
+| `symbol`     | string | yes      | Symbol name |
+| `maxResults` | number | no       | Default 20  |
 
 ## get_chunks — Browse AST chunks
 
@@ -60,30 +60,30 @@ AST-aware code chunks (functions, classes, methods) with full source. Provide **
 
 Show who calls a symbol and what it calls, with file locations and dependency edges. Supports multi-hop traversal.
 
-| Parameter  | Type   | Required       | Notes          |
-| ---------- | ------ | -------------- | -------------- |
-| `function` | string | yes            | Symbol name    |
-| `depth`    | number | no             | Default 1      |
+| Parameter  | Type   | Required | Notes       |
+| ---------- | ------ | -------- | ----------- |
+| `function` | string | yes      | Symbol name |
+| `depth`    | number | no       | Default 1   |
 
 ## grep — Content search
 
 Bare-identifier search in file contents. FFF-powered with definition expansion and fuzzy fallback. **Use bare identifiers only** (e.g. `MyHandler`, not `fn MyHandler`).
 
-| Parameter    | Type   | Required               | Notes              |
-| ------------ | ------ | ---------------------- | ------------------ |
-| `query`      | string | yes (alias: `pattern`) | Bare identifier    |
-| `maxResults` | number | no                     | Default 20         |
-| `offset`     | number | no                     | Pagination offset  |
+| Parameter    | Type   | Required               | Notes             |
+| ------------ | ------ | ---------------------- | ----------------- |
+| `query`      | string | yes (alias: `pattern`) | Bare identifier   |
+| `maxResults` | number | no                     | Default 20        |
+| `offset`     | number | no                     | Pagination offset |
 
 ## find_files — Fuzzy file discovery
 
 Fuzzy path/name search, frecency-ranked and git-aware (respects `.gitignore`). Use to discover which files exist.
 
-| Parameter    | Type   | Required               | Notes              |
-| ------------ | ------ | ---------------------- | ------------------ |
-| `query`      | string | yes (alias: `pattern`) | Partial path/name  |
-| `maxResults` | number | no                     | Default 20         |
-| `offset`     | number | no                     | Pagination offset  |
+| Parameter    | Type   | Required               | Notes             |
+| ------------ | ------ | ---------------------- | ----------------- |
+| `query`      | string | yes (alias: `pattern`) | Partial path/name |
+| `maxResults` | number | no                     | Default 20        |
+| `offset`     | number | no                     | Pagination offset |
 
 ## index_status — Health check
 
@@ -101,49 +101,49 @@ Call when searches are empty/stale or to confirm indexing progress.
 
 Create or update a wiki knowledge entry. Persistent Markdown, auto-indexed for semantic search. Save anything useful — decisions, gotchas, conventions, patterns. Knowledge not saved is knowledge lost.
 
-| Parameter | Type   | Required | Notes                              |
-| --------- | ------ | -------- | ---------------------------------- |
-| `slug`    | string | yes      | Unique id / filename (no extension)|
-| `title`   | string | yes      | Human-readable title               |
-| `content` | string | yes      | Markdown body                      |
-| `tags`    | string | no       | Comma-separated tags               |
-| `entry_type` | string | no    | `source\|entity\|concept\|analysis\|adr\|arch\|gotcha` (default `concept`) |
-| `sources` | string | no       | Comma-separated source paths/URLs  |
+| Parameter    | Type   | Required | Notes                                                                      |
+| ------------ | ------ | -------- | -------------------------------------------------------------------------- |
+| `slug`       | string | yes      | Unique id / filename (no extension)                                        |
+| `title`      | string | yes      | Human-readable title                                                       |
+| `content`    | string | yes      | Markdown body                                                              |
+| `tags`       | string | no       | Comma-separated tags                                                       |
+| `entry_type` | string | no       | `source\|entity\|concept\|analysis\|adr\|arch\|gotcha` (default `concept`) |
+| `sources`    | string | no       | Comma-separated source paths/URLs                                          |
 
 ## wiki_read — Read one entry
 
 Read a wiki entry by slug. Returns full Markdown content with metadata (title, tags, created/updated).
 
-| Parameter | Type   | Required | Notes |
-| --------- | ------ | -------- | ----- |
+| Parameter | Type   | Required | Notes    |
+| --------- | ------ | -------- | -------- |
 | `slug`    | string | yes      | Entry id |
 
 ## wiki_delete — Delete an entry
 
 Irreversible — removes the entry and its index.
 
-| Parameter | Type   | Required | Notes |
-| --------- | ------ | -------- | ----- |
+| Parameter | Type   | Required | Notes    |
+| --------- | ------ | -------- | -------- |
 | `slug`    | string | yes      | Entry id |
 
 ## wiki_search — Recall knowledge
 
 Semantic search over wiki entries with tag filtering. Use when the `wiki_query` bundle is not enough — `wiki_query` is the default recall path. Returns entries with previews and relevance scores.
 
-| Parameter    | Type   | Required | Notes                        |
-| ------------ | ------ | -------- | ---------------------------- |
-| `query`      | string | yes      | Natural language query       |
-| `tags`       | string | no       | Comma-separated tag filter   |
+| Parameter    | Type   | Required | Notes                                                  |
+| ------------ | ------ | -------- | ------------------------------------------------------ |
+| `query`      | string | yes      | Natural language query                                 |
+| `tags`       | string | no       | Comma-separated tag filter                             |
 | `entry_type` | string | no       | `source\|entity\|concept\|analysis\|adr\|arch\|gotcha` |
-| `maxResults` | number | no       | Default 20                   |
+| `maxResults` | number | no       | Default 20                                             |
 
 ## wiki_list — Browse saved knowledge
 
 List all wiki entries with slug, title, tags, and last-updated timestamp. Supports tag and type filtering.
 
-| Parameter    | Type   | Required | Notes                        |
-| ------------ | ------ | -------- | ---------------------------- |
-| `tags`       | string | no       | Comma-separated tag filter   |
+| Parameter    | Type   | Required | Notes                                                  |
+| ------------ | ------ | -------- | ------------------------------------------------------ |
+| `tags`       | string | no       | Comma-separated tag filter                             |
 | `entry_type` | string | no       | `source\|entity\|concept\|analysis\|adr\|arch\|gotcha` |
 
 ## wiki_query — Index-first recall (default)
@@ -161,11 +161,11 @@ CLI: `fva wiki query "<question>" --path .` (bundle limit fixed at 10 on CLI).
 
 Ingest a source into the wiki (Karpathy-style). Saves raw text under `sources/` (immutable), finds related pages via semantic search + wikilink neighbors, and returns an ingest plan with up to 15 suggested pages to touch. Write the summary with `wiki_write` afterwards, then cross-link with `[[slug]]` references.
 
-| Parameter    | Type   | Required | Notes                                        |
-| ------------ | ------ | -------- | -------------------------------------------- |
-| `content`    | string | yes      | Raw source text to preserve under `sources/` |
-| `source_uri` | string | no       | Original path or URL of the source           |
-| `title_hint` | string | no       | Hint for the source title                    |
+| Parameter    | Type   | Required | Notes                                                            |
+| ------------ | ------ | -------- | ---------------------------------------------------------------- |
+| `content`    | string | yes      | Raw source text to preserve under `sources/`                     |
+| `source_uri` | string | no       | Original path or URL of the source                               |
+| `title_hint` | string | no       | Hint for the source title                                        |
 | `area_hint`  | string | no       | One of: `entity`, `concept`, `analysis`, `adr`, `arch`, `gotcha` |
 
 CLI: `fva wiki ingest --content ... | --file <path> | stdin --title "..." --source-uri <path-or-url> --area-hint concept --path .`
@@ -176,8 +176,8 @@ Rules: never edit `sources/*`, never hand-edit `index`/`log`.
 
 Lint the wiki (Karpathy-style): orphans, dead `[[links]]`, stale entries, contradiction candidates, thin areas. Report only, no auto-fix — fix things yourself.
 
-| Parameter    | Type   | Required | Notes                                        |
-| ------------ | ------ | -------- | -------------------------------------------- |
+| Parameter    | Type   | Required | Notes                                                             |
+| ------------ | ------ | -------- | ----------------------------------------------------------------- |
 | `stale_days` | number | no       | Days after which a non-source entry counts as stale (default 180) |
 
 CLI: `fva wiki lint --stale-days 180 --path .`

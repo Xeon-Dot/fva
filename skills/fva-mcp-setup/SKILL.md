@@ -107,13 +107,13 @@ Copy from `examples/mcp-clients/cursor.project.mcp.json`.
 
 ## Troubleshooting
 
-| Symptom                  | Fix                                                        |
-| ------------------------ | ---------------------------------------------------------- |
-| Tool not found           | Check `command` path; run `fva --version` in the same shell |
-| Empty search results     | Run `fva index --path .`, then retry                       |
+| Symptom                  | Fix                                                          |
+| ------------------------ | ------------------------------------------------------------ |
+| Tool not found           | Check `command` path; run `fva --version` in the same shell  |
+| Empty search results     | Run `fva index --path .`, then retry                         |
 | Stale results            | Re-index, or set `watch = true` in `fva.toml` for auto-watch |
-| Voyage errors            | Set `VOYAGE_API_KEY` or switch to `provider = "local"`     |
-| Permission denied (Unix) | `chmod +x` on the binary; ensure install dir is on `PATH` |
+| Voyage errors            | Set `VOYAGE_API_KEY` or switch to `provider = "local"`       |
+| Permission denied (Unix) | `chmod +x` on the binary; ensure install dir is on `PATH`    |
 
 ## Optional: Voyage Embeddings
 

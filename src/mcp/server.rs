@@ -519,7 +519,16 @@ impl FvaServer {
         let tags = parse_tags(&params.tags.unwrap_or_default());
         let entry_type = params.entry_type.unwrap_or_else(|| "concept".into());
         let sources = parse_tags(&params.sources.unwrap_or_default());
-        self.engine.wiki.write(&params.slug, &params.title, &entry_type, &tags, &sources, &params.content)
+        self.engine
+            .wiki
+            .write(
+                &params.slug,
+                &params.title,
+                &entry_type,
+                &tags,
+                &sources,
+                &params.content,
+            )
             .map_err(|e| ErrorData::internal_error(format!("wiki_write failed: {e}"), None))?;
 
         Ok(empty_result(format!(
@@ -531,7 +540,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_read",
-        description = "Read a wiki knowledge entry by slug. Returns full Markdown content with metadata (title, tags, created/updated timestamps). Use when you know the entry id. Params: slug (required)."
+        description = "Read a wiki knowledge entry by slug. Returns full Markdown content with metadata (title, entry_type, tags, sources, created/updated timestamps). Use when you know the entry id. Params: slug (required)."
     )]
     fn wiki_read(
         &self,
@@ -550,8 +559,14 @@ impl FvaServer {
         };
 
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "# {}\n{}created: {}\nupdated: {}\n\n{}",
-            entry.title, tags, entry.created, entry.updated, entry.content
+            "# {}\ntype: {}\n{}sources: {}\ncreated: {}\nupdated: {}\n\n{}",
+            entry.title,
+            entry.entry_type,
+            tags,
+            entry.sources.join(", "),
+            entry.created,
+            entry.updated,
+            entry.content
         ))]))
     }
 
@@ -641,7 +656,7 @@ impl FvaServer {
 
     #[tool(
         name = "wiki_list",
-        description = "List all wiki knowledge entries with slug, title, tags, and last-updated timestamp. Supports tag filtering to browse by topic. Use to discover what knowledge is already saved. Params: tags (optional, comma-separated filter)."
+        description = "List all wiki knowledge entries with slug, title, entry_type, tags, sources, and last-updated timestamp. Supports tag filtering to browse by topic. Use to discover what knowledge is already saved. Params: tags (optional, comma-separated filter)."
     )]
     fn wiki_list(
         &self,
@@ -669,9 +684,14 @@ impl FvaServer {
             } else {
                 format!(" [{}]", entry.tags.join(", "))
             };
+            let sources = if entry.sources.is_empty() {
+                String::new()
+            } else {
+                format!(" sources: {}", entry.sources.join(", "))
+            };
             lines.push(format!(
-                "  {} — {}{} (updated: {})",
-                entry.slug, entry.title, tags, entry.updated
+                "  {} — {} [{}]{}{} (updated: {})",
+                entry.slug, entry.title, entry.entry_type, tags, sources, entry.updated
             ));
         }
 
@@ -680,11 +700,28 @@ impl FvaServer {
         )]))
     }
 
-    #[tool(name = "wiki_ingest", description = "Ingest a source into the wiki (Karpathy-style). Saves raw text under sources/ (immutable), finds related pages via semantic search + wikilink neighbors, and returns an ingest plan with up to 15 suggested pages to touch. Write summaries with wiki_write afterwards. Params: content (required), source_uri, title_hint, area_hint.")]
-    fn wiki_ingest(&self, Parameters(params): Parameters<WikiIngestParams>) -> Result<CallToolResult, ErrorData> {
-        let plan = self.engine.wiki.ingest(&params.content, params.source_uri.as_deref(), params.title_hint.as_deref(), params.area_hint.as_deref())
+    #[tool(
+        name = "wiki_ingest",
+        description = "Ingest a source into the wiki (Karpathy-style). Saves raw text under sources/ (immutable), finds related pages via semantic search + wikilink neighbors, and returns an ingest plan with up to 15 suggested pages to touch. Write summaries with wiki_write afterwards. Params: content (required), source_uri, title_hint, area_hint."
+    )]
+    fn wiki_ingest(
+        &self,
+        Parameters(params): Parameters<WikiIngestParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let plan = self
+            .engine
+            .wiki
+            .ingest(
+                &params.content,
+                params.source_uri.as_deref(),
+                params.title_hint.as_deref(),
+                params.area_hint.as_deref(),
+            )
             .map_err(|e| ErrorData::internal_error(format!("wiki_ingest failed: {e}"), None))?;
-        let mut out = format!("Ingested as [[{}]].\n\n## Related pages\n", plan.source_slug);
+        let mut out = format!(
+            "Ingested as [[{}]].\n\n## Related pages\n",
+            plan.source_slug
+        );
         for (slug, score) in &plan.related {
             out.push_str(&format!("- [[{slug}]] (score={score:.3})\n"));
         }
@@ -696,22 +733,43 @@ impl FvaServer {
         for s in &plan.suggested_slugs {
             out.push_str(&format!("- [[{s}]]\n"));
         }
-        out.push_str("\nWrite the summary with wiki_write, then cross-link with [[slug]] references.");
+        out.push_str(
+            "\nWrite the summary with wiki_write, then cross-link with [[slug]] references.",
+        );
         Ok(CallToolResult::success(vec![Content::text(out)]))
     }
 
-    #[tool(name = "wiki_query", description = "Query the wiki index-first (Karpathy-style). Returns index.md plus top semantic hits plus 1-hop wikilink neighbors. Drill down with wiki_read. File good answers back with wiki_write. Params: query (required), maxResults.")]
-    fn wiki_query(&self, Parameters(params): Parameters<WikiQueryParams>) -> Result<CallToolResult, ErrorData> {
-        let (limit, _offset) = resolve_pagination(params.max_results, None, self.default_max_results);
-        let bundle = self.engine.wiki.query_bundle(&params.query, limit)
+    #[tool(
+        name = "wiki_query",
+        description = "Query the wiki index-first (Karpathy-style). Returns index.md plus top semantic hits plus 1-hop wikilink neighbors. Drill down with wiki_read. File good answers back with wiki_write. Params: query (required), maxResults."
+    )]
+    fn wiki_query(
+        &self,
+        Parameters(params): Parameters<WikiQueryParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let (limit, _offset) =
+            resolve_pagination(params.max_results, None, self.default_max_results);
+        let bundle = self
+            .engine
+            .wiki
+            .query_bundle(&params.query, limit)
             .map_err(|e| ErrorData::internal_error(format!("wiki_query failed: {e}"), None))?;
         Ok(CallToolResult::success(vec![Content::text(bundle)]))
     }
 
-    #[tool(name = "wiki_lint", description = "Lint the wiki (Karpathy-style): orphans, dead [[links]], stale entries, contradiction candidates, thin areas. Report only, no auto-fix. Params: stale_days (default 180).")]
-    fn wiki_lint(&self, Parameters(params): Parameters<WikiLintParams>) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        name = "wiki_lint",
+        description = "Lint the wiki (Karpathy-style): orphans, dead [[links]], stale entries, contradiction candidates, thin areas. Report only, no auto-fix. Params: stale_days (default 180)."
+    )]
+    fn wiki_lint(
+        &self,
+        Parameters(params): Parameters<WikiLintParams>,
+    ) -> Result<CallToolResult, ErrorData> {
         let days = params.stale_days.map(|d| d as i64).unwrap_or(180);
-        let report = self.engine.wiki.lint_report(days)
+        let report = self
+            .engine
+            .wiki
+            .lint_report(days)
             .map_err(|e| ErrorData::internal_error(format!("wiki_lint failed: {e}"), None))?;
         Ok(CallToolResult::success(vec![Content::text(report)]))
     }

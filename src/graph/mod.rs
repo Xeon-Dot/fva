@@ -8,10 +8,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use bincode::{deserialize, serialize};
-use std::sync::RwLock;
 use petgraph::Direction;
 use petgraph::graph::{DiGraph, NodeIndex};
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 
 use crate::error::{FvaError, Result};
 use crate::indexer::chunker::CodeChunk;

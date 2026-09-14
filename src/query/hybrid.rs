@@ -10,7 +10,7 @@ use crate::fff::FffEngine;
 use crate::graph::CallGraphStore;
 use crate::indexer::chunker::CodeChunk;
 use crate::indexer::store::ChunkStore;
-use crate::vector::{VectorHit, LanceDbVectorStore};
+use crate::vector::{LanceDbVectorStore, VectorHit};
 
 /// A fused search result with multi-signal scoring.
 #[derive(Debug, Clone)]
@@ -236,7 +236,11 @@ impl HybridQueryEngine {
 
         let total = candidates.len();
         let mut hits: Vec<HybridHit> = candidates.into_values().collect();
-        hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        hits.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         hits.truncate(limit);
 
         HybridSearchResult {

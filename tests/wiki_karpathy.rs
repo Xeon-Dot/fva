@@ -30,9 +30,11 @@ fn karpathy_roundtrip_ingest_query_lint_fileback() {
             "Ownership notes, see [[concepts/borrowing]]",
         )
         .unwrap();
-    assert!(std::fs::read_to_string(dir.join("wiki/index.md"))
-        .unwrap()
-        .contains(&plan.suggested_slugs[0]));
+    assert!(
+        std::fs::read_to_string(dir.join("wiki/index.md"))
+            .unwrap()
+            .contains(&plan.suggested_slugs[0])
+    );
 
     // query → bundle에 fileback 포함
     let bundle = store.query_bundle("ownership borrowing", 10).unwrap();

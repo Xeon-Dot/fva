@@ -23,11 +23,7 @@ pub struct CodeChunk {
 }
 
 impl CodeChunk {
-    pub fn from_raw(
-        raw: RawChunk,
-        relative_path: &str,
-        language: &str,
-    ) -> Self {
+    pub fn from_raw(raw: RawChunk, relative_path: &str, language: &str) -> Self {
         let line_count = raw.content.lines().count();
         let id = format!(
             "{}:{}:{}-{}",

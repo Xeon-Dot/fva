@@ -22,19 +22,19 @@ Requires Rust 1.75+. Uses sccache (configured in `.cargo/config.toml`).
 
 ## Source Layout
 
-| Module | Path | Purpose |
-|--------|------|---------|
-| CLI + main | `src/main.rs` | clap subcommands: serve, index, status, search, wiki, bench, version, upgrade |
-| Engine | `src/engine.rs` | `FvaEngine` — orchestrates all subsystems, holds `Arc` refs |
-| FFF | `src/fff/` | Frecency-ranked fuzzy file search + grep (wraps `fff-search`) |
-| AST Indexer | `src/indexer/` | Tree-sitter parsing, chunking, parallel pipeline (rayon) |
-| Vector Store | `src/vector/` | LanceDB backend (the only vector backend) |
-| Embedding | `src/embedding/` | Local hash + Voyage API providers |
-| Call Graph | `src/graph/` | petgraph-based callers/callees |
-| Query | `src/query/` | Hybrid search fusion + smart context builder |
-| MCP | `src/mcp/` | rmcp tool handlers (stdio transport) |
-| Wiki | `src/wiki/` | Markdown knowledge base with semantic search |
-| Config | `src/config.rs` | TOML config: project `.fva.toml` > global `~/.config/fva/config.toml` |
+| Module       | Path             | Purpose                                                                       |
+| ------------ | ---------------- | ----------------------------------------------------------------------------- |
+| CLI + main   | `src/main.rs`    | clap subcommands: serve, index, status, search, wiki, bench, version, upgrade |
+| Engine       | `src/engine.rs`  | `FvaEngine` — orchestrates all subsystems, holds `Arc` refs                   |
+| FFF          | `src/fff/`       | Frecency-ranked fuzzy file search + grep (wraps `fff-search`)                 |
+| AST Indexer  | `src/indexer/`   | Tree-sitter parsing, chunking, parallel pipeline (rayon)                      |
+| Vector Store | `src/vector/`    | LanceDB backend (the only vector backend)                                     |
+| Embedding    | `src/embedding/` | Local hash + Voyage API providers                                             |
+| Call Graph   | `src/graph/`     | petgraph-based callers/callees                                                |
+| Query        | `src/query/`     | Hybrid search fusion + smart context builder                                  |
+| MCP          | `src/mcp/`       | rmcp tool handlers (stdio transport)                                          |
+| Wiki         | `src/wiki/`      | Markdown knowledge base with semantic search                                  |
+| Config       | `src/config.rs`  | TOML config: project `.fva.toml` > global `~/.config/fva/config.toml`         |
 
 ## Conventions
 

@@ -33,15 +33,17 @@ impl FvaEngine {
 
         let fff = FffEngine::new(&root, &config.fff)?;
         let embedder = build_embedder(&config.embedding)?;
-        let vectors = Arc::new(LanceDbVectorStore::open(
-            if std::path::Path::new(&config.vector.db_path).is_absolute() {
-                std::path::PathBuf::from(&config.vector.db_path)
-            } else {
-                data_dir.join(&config.vector.db_path)
-            },
-            embedder.dimensions(),
-        )
-        .await?);
+        let vectors = Arc::new(
+            LanceDbVectorStore::open(
+                if std::path::Path::new(&config.vector.db_path).is_absolute() {
+                    std::path::PathBuf::from(&config.vector.db_path)
+                } else {
+                    data_dir.join(&config.vector.db_path)
+                },
+                embedder.dimensions(),
+            )
+            .await?,
+        );
         let graph = Arc::new(CallGraphStore::open(&data_dir)?);
         let bm25 = Arc::new(Bm25Index::new()?);
 
