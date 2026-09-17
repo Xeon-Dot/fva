@@ -5,22 +5,15 @@ use serde::{Deserialize, Serialize};
 use crate::error::{FvaError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Config {
-    #[serde(default = "default_root")]
     pub root: String,
-    #[serde(default)]
     pub indexer: IndexerConfig,
-    #[serde(default)]
     pub fff: FffConfig,
-    #[serde(default)]
     pub embedding: EmbeddingConfig,
-    #[serde(default)]
     pub vector: VectorConfig,
-    #[serde(default)]
     pub query: QueryConfig,
-    #[serde(default)]
     pub mcp: McpConfig,
-    #[serde(default = "default_true")]
     pub sandbox_indexing: bool,
 }
 
@@ -40,10 +33,9 @@ impl Default for Config {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct IndexerConfig {
-    #[serde(default = "default_max_file_size")]
     pub max_file_size: u64,
-    #[serde(default = "default_true")]
     pub respect_gitignore: bool,
 }
 
@@ -57,16 +49,12 @@ impl Default for IndexerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct FffConfig {
-    #[serde(default = "default_frecency_db")]
     pub frecency_db: String,
-    #[serde(default = "default_history_db")]
     pub history_db: String,
-    #[serde(default = "default_max_cached_files")]
     pub max_cached_files: usize,
-    #[serde(default = "default_true")]
     pub enable_warmup: bool,
-    #[serde(default = "default_true")]
     pub enable_content_indexing: bool,
 }
 
@@ -83,14 +71,11 @@ impl Default for FffConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EmbeddingConfig {
-    #[serde(default = "default_embedding_provider")]
     pub provider: String,
-    #[serde(default)]
     pub voyage_api_key: String,
-    #[serde(default = "default_embedding_model")]
     pub model: String,
-    #[serde(default = "default_dimensions")]
     pub dimensions: usize,
 }
 
@@ -106,10 +91,9 @@ impl Default for EmbeddingConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VectorConfig {
-    #[serde(default = "default_vector_backend")]
     pub backend: String,
-    #[serde(default = "default_vector_db")]
     pub db_path: String,
 }
 
@@ -123,18 +107,13 @@ impl Default for VectorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct QueryConfig {
-    #[serde(default = "default_max_results")]
     pub default_max_results: usize,
-    #[serde(default = "default_fff_weight")]
     pub fff_weight: f32,
-    #[serde(default = "default_vector_weight")]
     pub vector_weight: f32,
-    #[serde(default = "default_graph_weight")]
     pub graph_weight: f32,
-    #[serde(default = "default_bm25_weight")]
     pub bm25_weight: f32,
-    #[serde(default = "default_max_context_tokens")]
     pub max_context_tokens: usize,
 }
 
@@ -152,12 +131,10 @@ impl Default for QueryConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct McpConfig {
-    #[serde(default = "default_server_name")]
     pub server_name: String,
-    #[serde(default = "default_log_level")]
     pub log_level: String,
-    #[serde(default)]
     pub log_file: String,
 }
 
