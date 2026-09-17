@@ -1,0 +1,12 @@
+{
+  "exclude": [],
+  "mcpServers": {
+    "fva1": {
+      "type": "stdio",
+      "command": "fva",
+      "args": [],
+      "env": {},
+      "cwd": "/home/nergis/Dev/fva"
+    }
+  }
+}
