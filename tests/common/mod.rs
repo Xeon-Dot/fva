@@ -1,6 +1,35 @@
 //! Shared test helpers for integration tests.
 
+use std::sync::Arc;
+
+use fva::embedding::{Embedder, LocalEmbedder};
+use fva::error::Result;
 use fva::indexer::chunker::CodeChunk;
+use fva::vector::{LanceDbVectorStore, chunk_texts};
+use tempfile::TempDir;
+
+/// Build a throwaway LanceDB store backed by the local hash embedder.
+pub async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<LocalEmbedder>, TempDir) {
+    let embedder = Arc::new(LocalEmbedder::new(256));
+    let dir = TempDir::new().expect("tempdir");
+    let store = Arc::new(
+        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
+            .await
+            .expect("open lancedb store"),
+    );
+    (store, embedder, dir)
+}
+
+/// Embed and index chunks into a store.
+pub async fn index_test_chunks(
+    embedder: &dyn Embedder,
+    store: &LanceDbVectorStore,
+    chunks: &[CodeChunk],
+) -> Result<()> {
+    let texts = chunk_texts(chunks);
+    let vectors = embedder.embed(&texts)?;
+    store.upsert_chunks(chunks, &vectors).await
+}
 
 /// Build a CodeChunk for testing
 pub fn make_chunk(id: &str, symbol: &str, kind: &str, content: &str, path: &str) -> CodeChunk {

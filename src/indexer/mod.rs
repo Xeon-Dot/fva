@@ -23,6 +23,18 @@ use crate::graph::CallGraphStore;
 use crate::query::Bm25Index;
 use crate::vector::LanceDbVectorStore;
 
+/// Minimal Rust sample shared by the chunker/parser unit tests.
+#[cfg(test)]
+pub(crate) const TEST_RUST_SOURCE: &str = r#"
+fn hello_world() {
+    println!("hello");
+}
+
+struct MyStruct {
+    field: i32,
+}
+"#;
+
 /// Shared indexer state.
 #[derive(Clone)]
 pub struct Indexer {

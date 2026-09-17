@@ -180,15 +180,7 @@ mod tests {
 
     #[test]
     fn extracts_rust_function_chunks() {
-        let source = r#"
-fn hello_world() {
-    println!("hello");
-}
-
-struct MyStruct {
-    field: i32,
-}
-"#;
+        let source = crate::indexer::TEST_RUST_SOURCE;
         let parser = AstParser::new();
         let chunks = parser.extract_chunks("rust", source);
         assert!(!chunks.is_empty());

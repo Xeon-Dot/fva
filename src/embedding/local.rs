@@ -293,6 +293,13 @@ mod tests {
         assert_eq!(v.len(), 128);
     }
 
+    /// Assert `a` is closer to `b` than to `c`.
+    fn assert_closer(a: &[f32], b: &[f32], c: &[f32]) {
+        let close = super::super::cosine_similarity(a, b);
+        let far = super::super::cosine_similarity(a, c);
+        assert!(close > far, "expected {close} > {far}");
+    }
+
     #[test]
     fn similar_code_has_higher_similarity() {
         let e = LocalEmbedder::new(256);
@@ -305,14 +312,7 @@ mod tests {
         let c = e
             .embed_one("fn render_html_template(page: &str) -> String")
             .unwrap();
-        let sim_ab = super::super::cosine_similarity(&a, &b);
-        let sim_ac = super::super::cosine_similarity(&a, &c);
-        assert!(
-            sim_ab > sim_ac,
-            "expected sim_ab ({}) > sim_ac ({})",
-            sim_ab,
-            sim_ac,
-        );
+        assert_closer(&a, &b, &c);
     }
 
     #[test]
@@ -330,14 +330,7 @@ mod tests {
         let a = e.embed_one("parse2json").unwrap();
         let b = e.embed_one("parse_to_json").unwrap();
         let c = e.embed_one("render_html").unwrap();
-        let sim_ab = super::super::cosine_similarity(&a, &b);
-        let sim_ac = super::super::cosine_similarity(&a, &c);
-        assert!(
-            sim_ab > sim_ac,
-            "expected sim_ab ({}) > sim_ac ({})",
-            sim_ab,
-            sim_ac,
-        );
+        assert_closer(&a, &b, &c);
     }
 
     #[test]
@@ -346,14 +339,7 @@ mod tests {
         let fn_a = e.embed_one("fn compute(input: i32) -> i32").unwrap();
         let fn_b = e.embed_one("fn compute(x: f64) -> f64").unwrap();
         let call = e.embed_one("let result = compute(42);").unwrap();
-        let sim_fn = super::super::cosine_similarity(&fn_a, &fn_b);
-        let sim_mixed = super::super::cosine_similarity(&fn_a, &call);
-        assert!(
-            sim_fn > sim_mixed,
-            "expected sim_fn ({}) > sim_mixed ({})",
-            sim_fn,
-            sim_mixed,
-        );
+        assert_closer(&fn_a, &fn_b, &call);
     }
 
     #[test]
@@ -362,13 +348,6 @@ mod tests {
         let repeated = e.embed_one("data data data process process").unwrap();
         let single = e.embed_one("data process query result").unwrap();
         let different = e.embed_one("render parse execute compute").unwrap();
-        let sim_rs = super::super::cosine_similarity(&repeated, &single);
-        let sim_rd = super::super::cosine_similarity(&repeated, &different);
-        assert!(
-            sim_rs > sim_rd,
-            "expected sim_rs ({}) > sim_rd ({})",
-            sim_rs,
-            sim_rd,
-        );
+        assert_closer(&repeated, &single, &different);
     }
 }

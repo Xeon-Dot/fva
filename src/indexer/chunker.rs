@@ -133,15 +133,7 @@ mod tests {
 
     #[test]
     fn chunks_rust_function() {
-        let source = r#"
-fn hello_world() {
-    println!("hello");
-}
-
-struct MyStruct {
-    field: i32,
-}
-"#;
+        let source = crate::indexer::TEST_RUST_SOURCE;
         let parser = AstParser::new();
         let path = PathBuf::from("test.rs");
         let chunks = chunk_file(&parser, &path, "test.rs", source, 1_000_000).unwrap();

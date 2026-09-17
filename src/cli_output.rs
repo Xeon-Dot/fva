@@ -114,35 +114,30 @@ pub fn wiki_deleted(slug: &str) {
     );
 }
 
-pub fn wiki_read(
-    slug: &str,
-    entry_type: &str,
-    tags: &[String],
-    sources: &[String],
-    created: &str,
-    updated: &str,
-    content: &str,
-) {
+pub fn wiki_read(entry: &WikiEntry) {
     println!(
         "\n  {} {}",
         style("◆").cyan().bold(),
-        style(slug).bold().white()
+        style(&entry.slug).bold().white()
     );
-    println!("  {}", style(format!("type: {entry_type}")).dim());
-    if !tags.is_empty() {
-        println!("  {}", style(format!("tags: {}", tags.join(", "))).dim());
+    println!("  {}", style(format!("type: {}", entry.entry_type)).dim());
+    if !entry.tags.is_empty() {
+        println!(
+            "  {}",
+            style(format!("tags: {}", entry.tags.join(", "))).dim()
+        );
     }
     println!(
         "  {}",
-        style(format!("sources: {}", sources.join(", "))).dim()
+        style(format!("sources: {}", entry.sources.join(", "))).dim()
     );
     println!(
         "  {} · {}",
-        style(format!("created: {created}")).dim(),
-        style(format!("updated: {updated}")).dim()
+        style(format!("created: {}", entry.created)).dim(),
+        style(format!("updated: {}", entry.updated)).dim()
     );
     println!();
-    for line in content.lines() {
+    for line in entry.content.lines() {
         println!("  {line}");
     }
     println!();

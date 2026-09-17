@@ -351,15 +351,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 WikiCommands::Read { slug } => {
                     let entry = engine.wiki.read(&slug)?;
-                    cli_output::wiki_read(
-                        &entry.slug,
-                        &entry.entry_type,
-                        &entry.tags,
-                        &entry.sources,
-                        &entry.created,
-                        &entry.updated,
-                        &entry.content,
-                    );
+                    cli_output::wiki_read(&entry);
                 }
                 WikiCommands::Delete { slug } => {
                     engine.wiki.delete(&slug)?;
@@ -372,14 +364,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     limit,
                 } => {
                     let tags = tags.map(|t| parse_tags(&t)).filter(|v| !v.is_empty());
-                    let results = engine.wiki.search(&query, tags.as_deref(), limit)?;
-                    let results: Vec<_> = match &entry_type {
-                        Some(t) => results
-                            .into_iter()
-                            .filter(|(e, _)| &e.entry_type == t)
-                            .collect(),
-                        None => results,
-                    };
+                    let results = engine.wiki.search(
+                        &query,
+                        tags.as_deref(),
+                        entry_type.as_deref(),
+                        limit,
+                    )?;
                     let mapped: Vec<(String, Vec<String>, String, f64)> = results
                         .iter()
                         .map(|(e, score)| {
@@ -395,11 +385,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 WikiCommands::List { tags, entry_type } => {
                     let tags = tags.map(|t| parse_tags(&t)).filter(|v| !v.is_empty());
-                    let entries = engine.wiki.list(tags.as_deref());
-                    let entries: Vec<_> = match &entry_type {
-                        Some(t) => entries.into_iter().filter(|e| &e.entry_type == t).collect(),
-                        None => entries,
-                    };
+                    let entries = engine.wiki.list(tags.as_deref(), entry_type.as_deref());
                     cli_output::wiki_list(&entries);
                 }
                 WikiCommands::Ingest {

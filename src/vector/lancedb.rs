@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use arrow_array::{FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray};
+use arrow_array::{Array, FixedSizeListArray, Float32Array, Int64Array, RecordBatch, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use futures::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
@@ -97,6 +97,16 @@ impl LanceDbVectorStore {
     }
 }
 
+/// Build one Utf8 column from a per-chunk accessor.
+fn str_col<F: Fn(&CodeChunk) -> String>(chunks: &[CodeChunk], f: F) -> Arc<dyn Array> {
+    Arc::new(StringArray::from(chunks.iter().map(f).collect::<Vec<_>>()))
+}
+
+/// Build one Int64 column from a per-chunk accessor.
+fn i64_col<F: Fn(&CodeChunk) -> i64>(chunks: &[CodeChunk], f: F) -> Arc<dyn Array> {
+    Arc::new(Int64Array::from(chunks.iter().map(f).collect::<Vec<_>>()))
+}
+
 impl LanceDbVectorStore {
     pub async fn upsert_chunks(&self, chunks: &[CodeChunk], vectors: &[Vec<f32>]) -> Result<()> {
         if chunks.len() != vectors.len() {
@@ -112,48 +122,14 @@ impl LanceDbVectorStore {
         let batch = RecordBatch::try_new(
             Arc::new(schema(self.dimensions)),
             vec![
-                Arc::new(StringArray::from(
-                    chunks.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
-                )),
-                Arc::new(StringArray::from(
-                    chunks
-                        .iter()
-                        .map(|c| c.relative_path.clone())
-                        .collect::<Vec<_>>(),
-                )),
-                Arc::new(StringArray::from(
-                    chunks
-                        .iter()
-                        .map(|c| c.symbol_name.clone())
-                        .collect::<Vec<_>>(),
-                )),
-                Arc::new(StringArray::from(
-                    chunks
-                        .iter()
-                        .map(|c| c.symbol_kind.clone())
-                        .collect::<Vec<_>>(),
-                )),
-                Arc::new(StringArray::from(
-                    chunks
-                        .iter()
-                        .map(|c| c.language.clone())
-                        .collect::<Vec<_>>(),
-                )),
-                Arc::new(Int64Array::from(
-                    chunks
-                        .iter()
-                        .map(|c| c.start_line as i64)
-                        .collect::<Vec<_>>(),
-                )),
-                Arc::new(Int64Array::from(
-                    chunks.iter().map(|c| c.end_line as i64).collect::<Vec<_>>(),
-                )),
-                Arc::new(StringArray::from(
-                    chunks
-                        .iter()
-                        .map(|c| truncate_preview(&c.content, 200))
-                        .collect::<Vec<_>>(),
-                )),
+                str_col(chunks, |c| c.id.clone()),
+                str_col(chunks, |c| c.relative_path.clone()),
+                str_col(chunks, |c| c.symbol_name.clone()),
+                str_col(chunks, |c| c.symbol_kind.clone()),
+                str_col(chunks, |c| c.language.clone()),
+                i64_col(chunks, |c| c.start_line as i64),
+                i64_col(chunks, |c| c.end_line as i64),
+                str_col(chunks, |c| truncate_preview(&c.content, 200)),
                 Arc::new(FixedSizeListArray::from_iter_primitive::<
                     arrow_array::types::Float32Type,
                     _,

@@ -58,6 +58,20 @@ fn remove_node_inner(
     }
 }
 
+/// Register an existing graph node in both lookup indexes.
+fn index_node_at(
+    node_index: &mut HashMap<SymbolId, NodeIndex>,
+    callee_index: &mut HashMap<String, Vec<NodeIndex>>,
+    idx: NodeIndex,
+    node: &SymbolId,
+) {
+    node_index.insert(node.clone(), idx);
+    callee_index
+        .entry(node.name.to_lowercase())
+        .or_default()
+        .push(idx);
+}
+
 /// Thread-safe call graph store.
 pub struct CallGraphStore {
     path: PathBuf,
@@ -99,11 +113,7 @@ impl CallGraphStore {
 
         for node in &snapshot.nodes {
             let idx = graph.add_node(node.clone());
-            node_index.insert(node.clone(), idx);
-            callee_index
-                .entry(node.name.to_lowercase())
-                .or_default()
-                .push(idx);
+            index_node_at(&mut node_index, &mut callee_index, idx, node);
         }
 
         for (from, to) in snapshot.edges {
@@ -122,11 +132,7 @@ impl CallGraphStore {
                 idx
             } else {
                 let idx = graph.add_node(callee_symbol.clone());
-                callee_index
-                    .entry(label.to_lowercase())
-                    .or_default()
-                    .push(idx);
-                node_index.insert(callee_symbol, idx);
+                index_node_at(&mut node_index, &mut callee_index, idx, &callee_symbol);
                 idx
             };
 
@@ -155,14 +161,14 @@ impl CallGraphStore {
         let mut node_index = self.node_index.write().unwrap();
         let mut callee_index = self.callee_index.write().unwrap();
 
-        let caller_idx = *node_index.entry(caller.clone()).or_insert_with(|| {
-            let idx = graph.add_node(caller.clone());
-            callee_index
-                .entry(caller.name.to_lowercase())
-                .or_default()
-                .push(idx);
-            idx
-        });
+        let caller_idx = match node_index.get(caller) {
+            Some(&idx) => idx,
+            None => {
+                let idx = graph.add_node(caller.clone());
+                index_node_at(&mut node_index, &mut callee_index, idx, caller);
+                idx
+            }
+        };
 
         let callee_lower = callee.to_lowercase();
         let callee_idx = if let Some(&idx) = callee_index.get(&callee_lower).and_then(|v| v.first())
@@ -175,8 +181,7 @@ impl CallGraphStore {
                 line: 0,
             };
             let idx = graph.add_node(symbol.clone());
-            callee_index.entry(callee_lower).or_default().push(idx);
-            node_index.insert(symbol, idx);
+            index_node_at(&mut node_index, &mut callee_index, idx, &symbol);
             idx
         };
 
@@ -203,12 +208,8 @@ impl CallGraphStore {
         node_index.clear();
         callee_index.clear();
         for idx in graph.node_indices() {
-            if let Some(node) = graph.node_weight(idx).cloned() {
-                node_index.insert(node.clone(), idx);
-                callee_index
-                    .entry(node.name.to_lowercase())
-                    .or_default()
-                    .push(idx);
+            if let Some(node) = graph.node_weight(idx) {
+                index_node_at(&mut node_index, &mut callee_index, idx, node);
             }
         }
         Ok(())

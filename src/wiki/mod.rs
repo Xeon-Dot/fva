@@ -137,6 +137,19 @@ impl WikiStore {
         Ok(())
     }
 
+    /// Re-render `index.md` and append a log line. Best-effort: failures are logged, not surfaced.
+    fn refresh_index_and_log(&self, action: &str, slug: &str, title: &str) {
+        if slug == "index" || slug == "log" {
+            return;
+        }
+        if let Err(e) = self.render_index() {
+            tracing::warn!("wiki render_index failed: {e}");
+        }
+        if let Err(e) = self.append_log(action, slug, title) {
+            tracing::warn!("wiki append_log failed: {e}");
+        }
+    }
+
     pub fn write(
         &self,
         slug: &str,
@@ -171,11 +184,6 @@ impl WikiStore {
             (now.clone(), now.clone())
         };
 
-        let md = format_frontmatter(
-            title, entry_type, tags, sources, &created, &updated, content,
-        );
-        std::fs::write(&file_path, md)?;
-
         let entry = WikiEntry {
             slug: slug.to_string(),
             title: title.to_string(),
@@ -186,15 +194,10 @@ impl WikiStore {
             updated,
             content: content.to_string(),
         };
+        std::fs::write(&file_path, format_frontmatter(&entry))?;
+
         self.index_entry(&entry)?;
-        if slug != "index" && slug != "log" {
-            if let Err(e) = self.render_index() {
-                tracing::warn!("wiki render_index failed: {e}");
-            }
-            if let Err(e) = self.append_log("write", slug, title) {
-                tracing::warn!("wiki append_log failed: {e}");
-            }
-        }
+        self.refresh_index_and_log("write", slug, title);
         self.persist()?;
 
         Ok(())
@@ -219,21 +222,14 @@ impl WikiStore {
             .unwrap_or_else(|_| slug.to_string());
         std::fs::remove_file(&file_path)?;
         self.entries.write().unwrap().retain(|e| e.slug != slug);
-        if slug != "index" && slug != "log" {
-            if let Err(e) = self.render_index() {
-                tracing::warn!("wiki render_index failed: {e}");
-            }
-            if let Err(e) = self.append_log("delete", slug, &title) {
-                tracing::warn!("wiki append_log failed: {e}");
-            }
-        }
+        self.refresh_index_and_log("delete", slug, &title);
         self.persist()?;
 
         Ok(())
     }
 
     fn render_index(&self) -> Result<()> {
-        let mut entries = self.list(None);
+        let mut entries = self.list(None, None);
         entries.retain(|e| e.slug != "index" && e.slug != "log");
         entries.sort_by(|a, b| b.updated.cmp(&a.updated));
         let mut md = String::from(
@@ -321,6 +317,7 @@ impl WikiStore {
         &self,
         query: &str,
         tags_filter: Option<&[String]>,
+        entry_type: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(WikiEntry, f32)>> {
         let query_vector = self.embedder.embed_one(query)?;
@@ -343,6 +340,10 @@ impl WikiStore {
                 Ok(entry) => results.push((entry, score)),
                 Err(_) => continue,
             }
+        }
+
+        if let Some(et) = entry_type {
+            results.retain(|(e, _)| e.entry_type == et);
         }
 
         Ok(results)
@@ -368,7 +369,7 @@ impl WikiStore {
         self.write(&slug, &title, "source", &[], &src_tag, content)?;
         self.append_log("ingest", &slug, &title).ok();
 
-        let hits = self.search(content, None, 10).unwrap_or_default();
+        let hits = self.search(content, None, None, 10).unwrap_or_default();
         let mut neighbors = Vec::new();
         for (entry, _) in &hits {
             for l in extract_wikilinks(&entry.content) {
@@ -404,7 +405,7 @@ impl WikiStore {
             out.push_str(&idx.chars().take(4000).collect::<String>());
             out.push('\n');
         }
-        let hits = self.search(query, None, limit).unwrap_or_default();
+        let hits = self.search(query, None, None, limit).unwrap_or_default();
         out.push_str(&format!("## Top {} semantic hits\n", hits.len()));
         for (i, (e, score)) in hits.iter().enumerate() {
             if i < 3 {
@@ -435,7 +436,7 @@ impl WikiStore {
 
     pub fn lint_report(&self, stale_days: i64) -> Result<String> {
         // ponytail: 전수스캔 O(n) + 유사쌍 O(n²). wiki-scale(<1k) 허용.
-        let entries = self.list(None);
+        let entries = self.list(None, None);
         let live: Vec<_> = entries
             .iter()
             .filter(|e| e.slug != "index" && e.slug != "log")
@@ -528,12 +529,13 @@ impl WikiStore {
         Ok(out)
     }
 
-    pub fn list(&self, tags_filter: Option<&[String]>) -> Vec<WikiEntry> {
+    pub fn list(&self, tags_filter: Option<&[String]>, entry_type: Option<&str>) -> Vec<WikiEntry> {
         let entries = self.entries.read().unwrap();
         let mut results: Vec<WikiEntry> = entries
             .iter()
             .filter(|e| tags_filter.is_none_or(|tf| tf.iter().any(|t| e.tags.contains(t))))
             .filter_map(|e| self.read(&e.slug).ok())
+            .filter(|e| entry_type.is_none_or(|et| e.entry_type == et))
             .collect();
 
         results.sort_by(|a, b| b.updated.cmp(&a.updated));
@@ -640,20 +642,25 @@ fn validate_slug(slug: &str) -> Result<()> {
     Ok(())
 }
 
-fn format_frontmatter(
-    title: &str,
-    entry_type: &str,
-    tags: &[String],
-    sources: &[String],
-    created: &str,
-    updated: &str,
-    content: &str,
-) -> String {
-    let tags_str = tags.join(", ");
-    let sources_str = sources.join(", ");
+fn format_frontmatter(entry: &WikiEntry) -> String {
+    let tags_str = entry.tags.join(", ");
+    let sources_str = entry.sources.join(", ");
     format!(
-        "---\ntitle: {title}\ntype: {entry_type}\ntags: {tags_str}\nsources: {sources_str}\ncreated: {created}\nupdated: {updated}\n---\n\n{content}\n"
+        "---\ntitle: {}\ntype: {}\ntags: {tags_str}\nsources: {sources_str}\ncreated: {}\nupdated: {}\n---\n\n{}\n",
+        entry.title, entry.entry_type, entry.created, entry.updated, entry.content
     )
+}
+
+/// Split a frontmatter CSV field into trimmed, non-empty values.
+fn split_csv(value: Option<String>) -> Vec<String> {
+    value
+        .map(|t| {
+            t.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
@@ -693,25 +700,8 @@ fn parse_frontmatter(slug: &str, raw: &str) -> Result<WikiEntry> {
     let fm: FrontMatter = serde_yaml::from_str(fm_block)
         .map_err(|e| FvaError::Wiki(format!("invalid frontmatter in '{slug}': {e}")))?;
 
-    let tags = fm
-        .tags
-        .map(|t| {
-            t.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let sources = fm
-        .sources
-        .map(|t| {
-            t.split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default();
+    let tags = split_csv(fm.tags);
+    let sources = split_csv(fm.sources);
 
     Ok(WikiEntry {
         slug: slug.to_string(),
@@ -785,17 +775,30 @@ mod tests {
         assert!(validate_slug("a/b").is_ok());
     }
 
+    /// Fresh wiki store in a temp dir (the dir is returned so tests can read files back).
+    fn test_store() -> (tempfile::TempDir, WikiStore) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = WikiStore::open(
+            dir.path().join("wiki"),
+            Arc::new(crate::embedding::LocalEmbedder::new(128)),
+        )
+        .unwrap();
+        (dir, store)
+    }
+
     #[test]
     fn test_roundtrip() {
-        let md = format_frontmatter(
-            "My Title",
-            "concept",
-            &["tag1".into(), "tag2".into()],
-            &["src/main.rs".into()],
-            "2024-01-01T00:00:00Z",
-            "2024-01-02T00:00:00Z",
-            "Some content here",
-        );
+        let entry = WikiEntry {
+            slug: "test".into(),
+            title: "My Title".into(),
+            entry_type: "concept".into(),
+            tags: vec!["tag1".into(), "tag2".into()],
+            sources: vec!["src/main.rs".into()],
+            created: "2024-01-01T00:00:00Z".into(),
+            updated: "2024-01-02T00:00:00Z".into(),
+            content: "Some content here".into(),
+        };
+        let md = format_frontmatter(&entry);
         let entry = parse_frontmatter("test", &md).unwrap();
         assert_eq!(entry.title, "My Title");
         assert_eq!(entry.tags, vec!["tag1", "tag2"]);
@@ -838,12 +841,7 @@ mod tests {
 
     #[test]
     fn test_write_blocks_reserved_and_source_rewrite() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = WikiStore::open(
-            dir.path().join("wiki"),
-            Arc::new(crate::embedding::LocalEmbedder::new(128)),
-        )
-        .unwrap();
+        let (_dir, store) = test_store();
         assert!(store.write("index", "I", "index", &[], &[], "x").is_err());
         assert!(store.write("log", "L", "log", &[], &[], "x").is_err());
         store
@@ -858,12 +856,7 @@ mod tests {
 
     #[test]
     fn test_write_maintains_index_and_log() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = WikiStore::open(
-            dir.path().join("wiki"),
-            Arc::new(crate::embedding::LocalEmbedder::new(128)),
-        )
-        .unwrap();
+        let (dir, store) = test_store();
         store
             .write(
                 "concepts/foo",
@@ -880,7 +873,7 @@ mod tests {
         assert!(log.contains("write | Foo (concepts/foo)"));
         assert!(
             store
-                .list(None)
+                .list(None, None)
                 .iter()
                 .all(|e| e.slug != "index" && e.slug != "log")
         );
@@ -892,7 +885,7 @@ mod tests {
         .unwrap();
         assert!(
             reopened
-                .list(None)
+                .list(None, None)
                 .iter()
                 .all(|e| e.slug != "index" && e.slug != "log")
         );
@@ -917,12 +910,7 @@ mod tests {
 
     #[test]
     fn test_ingest_returns_plan() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = WikiStore::open(
-            dir.path().join("wiki"),
-            Arc::new(crate::embedding::LocalEmbedder::new(128)),
-        )
-        .unwrap();
+        let (_dir, store) = test_store();
         store
             .write(
                 "concepts/rust-ownership",
@@ -951,12 +939,7 @@ mod tests {
 
     #[test]
     fn test_query_bundle_includes_index_and_hits() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = WikiStore::open(
-            dir.path().join("wiki"),
-            Arc::new(crate::embedding::LocalEmbedder::new(128)),
-        )
-        .unwrap();
+        let (_dir, store) = test_store();
         store
             .write(
                 "concepts/foo",
@@ -996,12 +979,7 @@ mod tests {
 
     #[test]
     fn test_lint_finds_orphan_and_dead_link() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = WikiStore::open(
-            dir.path().join("wiki"),
-            Arc::new(crate::embedding::LocalEmbedder::new(128)),
-        )
-        .unwrap();
+        let (_dir, store) = test_store();
         store
             .write(
                 "concepts/orphan",

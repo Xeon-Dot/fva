@@ -180,16 +180,24 @@ impl ContextBuilder {
     }
 }
 
-fn format_hit(hit: &HybridHit) -> String {
+/// One-line hit header shared by smart-context and MCP hybrid output.
+pub fn format_hit_header(hit: &HybridHit) -> String {
     format!(
-        "### {} [{}] {}:{}-{} (score={:.3}, sources={})\n```{}\n{}\n```\n",
+        "### {} [{}] {}:{}-{} (score={:.3}, src={})",
         hit.symbol_name,
         hit.symbol_kind,
         hit.relative_path,
         hit.start_line,
         hit.end_line,
         hit.score,
-        hit.sources.join("+"),
+        hit.sources.join("+")
+    )
+}
+
+fn format_hit(hit: &HybridHit) -> String {
+    format!(
+        "{}\n```{}\n{}\n```\n",
+        format_hit_header(hit),
         hit.language,
         hit.content
     )

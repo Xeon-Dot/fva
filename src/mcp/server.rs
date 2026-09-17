@@ -9,7 +9,7 @@ use serde::Deserialize;
 
 use crate::engine::FvaEngine;
 use crate::indexer::chunker::{ChunkSearchResult, format_chunks_for_agent};
-use crate::query::context::ContextBuilder;
+use crate::query::context::{ContextBuilder, format_hit_header};
 use crate::util::{parse_tags, resolve_pagination};
 
 pub const MCP_INSTRUCTIONS: &str = concat!(
@@ -607,16 +607,13 @@ impl FvaServer {
         let results = self
             .engine
             .wiki
-            .search(&params.query, tags.as_deref(), limit)
+            .search(
+                &params.query,
+                tags.as_deref(),
+                params.entry_type.as_deref(),
+                limit,
+            )
             .map_err(|e| ErrorData::internal_error(format!("wiki_search failed: {e}"), None))?;
-
-        let results: Vec<_> = match &params.entry_type {
-            Some(t) => results
-                .into_iter()
-                .filter(|(e, _)| &e.entry_type == t)
-                .collect(),
-            None => results,
-        };
 
         if results.is_empty() {
             return Ok(empty_result(format!(
@@ -667,11 +664,10 @@ impl FvaServer {
             .map(|t| parse_tags(&t))
             .filter(|v| !v.is_empty());
 
-        let entries = self.engine.wiki.list(tags.as_deref());
-        let entries: Vec<_> = match &params.entry_type {
-            Some(t) => entries.into_iter().filter(|e| &e.entry_type == t).collect(),
-            None => entries,
-        };
+        let entries = self
+            .engine
+            .wiki
+            .list(tags.as_deref(), params.entry_type.as_deref());
 
         if entries.is_empty() {
             return Ok(empty_result("0 wiki entries.".to_string()));
@@ -788,16 +784,7 @@ fn format_hybrid_result(result: &crate::query::HybridSearchResult) -> String {
     )];
 
     for hit in &result.hits {
-        lines.push(format!(
-            "\n### {} [{}] {}:{}-{} (score={:.3}, src={})",
-            hit.symbol_name,
-            hit.symbol_kind,
-            hit.relative_path,
-            hit.start_line,
-            hit.end_line,
-            hit.score,
-            hit.sources.join("+")
-        ));
+        lines.push(format!("\n{}", format_hit_header(hit)));
         let preview: String = hit.content.lines().take(8).collect::<Vec<_>>().join("\n");
         lines.push(format!("```{}  \n{}\n```", hit.language, preview));
     }

@@ -13,7 +13,7 @@ use crate::indexer::store::ChunkStore;
 use crate::vector::{LanceDbVectorStore, VectorHit};
 
 /// A fused search result with multi-signal scoring.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HybridHit {
     pub chunk_id: String,
     pub relative_path: String,
@@ -42,12 +42,7 @@ impl HybridHit {
             start_line: chunk.start_line,
             end_line: chunk.end_line,
             content: chunk.content.clone(),
-            score: 0.0,
-            fff_score: 0.0,
-            vector_score: 0.0,
-            graph_score: 0.0,
-            bm25_score: 0.0,
-            sources: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -64,11 +59,9 @@ impl HybridHit {
             end_line: vh.end_line,
             content: vh.content_preview.clone(),
             score: vh.score,
-            fff_score: 0.0,
             vector_score: vh.score,
-            graph_score: 0.0,
-            bm25_score: 0.0,
             sources: vec!["vector".into()],
+            ..Default::default()
         }
     }
 }
@@ -130,30 +123,18 @@ impl HybridQueryEngine {
             for (rank, path) in fff_result.paths.iter().enumerate() {
                 let fff_score = 1.0 - (rank as f32 / (fff_result.paths.len().max(1) as f32));
                 for chunk in self.store.chunks_for_file(path) {
-                    self.merge_hit(
-                        &mut candidates,
-                        &chunk,
-                        SignalScores {
-                            fff: fff_score * self.config.fff_weight,
-                            ..Default::default()
-                        },
-                        "fff",
-                    );
+                    self.push_signal(&mut candidates, &chunk, "fff", |s| {
+                        s.fff = fff_score * self.config.fff_weight;
+                    });
                 }
             }
         }
 
         // Stage 1b: Text chunk search
         for chunk in self.store.search_chunks(query) {
-            self.merge_hit(
-                &mut candidates,
-                &chunk,
-                SignalScores {
-                    fff: 0.5 * self.config.fff_weight,
-                    ..Default::default()
-                },
-                "text",
-            );
+            self.push_signal(&mut candidates, &chunk, "text", |s| {
+                s.fff = 0.5 * self.config.fff_weight;
+            });
         }
 
         // Stage 1c: BM25 lexical search
@@ -165,15 +146,9 @@ impl HybridQueryEngine {
             .max(f32::EPSILON);
         for (chunk_id, raw) in bm25_hits {
             if let Some(chunk) = self.store.chunk_by_id(&chunk_id) {
-                self.merge_hit(
-                    &mut candidates,
-                    &chunk,
-                    SignalScores {
-                        bm25: raw / bm25_max * self.config.bm25_weight,
-                        ..Default::default()
-                    },
-                    "bm25",
-                );
+                self.push_signal(&mut candidates, &chunk, "bm25", |s| {
+                    s.bm25 = raw / bm25_max * self.config.bm25_weight;
+                });
             }
         }
         // Stage 2: Vector semantic search
@@ -183,15 +158,9 @@ impl HybridQueryEngine {
             for hit in vector_hits {
                 match self.store.chunk_by_id(&hit.chunk_id) {
                     Some(chunk) => {
-                        self.merge_hit(
-                            &mut candidates,
-                            &chunk,
-                            SignalScores {
-                                vector: hit.score * self.config.vector_weight,
-                                ..Default::default()
-                            },
-                            "vector",
-                        );
+                        self.push_signal(&mut candidates, &chunk, "vector", |s| {
+                            s.vector = hit.score * self.config.vector_weight;
+                        });
                     }
                     None => {
                         // ChunkStore not yet populated (e.g. background index still running).
@@ -210,27 +179,15 @@ impl HybridQueryEngine {
             let callees = self.graph.callees(&sym.name, 1);
             for related in callers.iter().chain(callees.iter()) {
                 for chunk in self.store.find_symbol(&related.name) {
-                    self.merge_hit(
-                        &mut candidates,
-                        &chunk,
-                        SignalScores {
-                            graph: 0.8 * self.config.graph_weight,
-                            ..Default::default()
-                        },
-                        "graph",
-                    );
+                    self.push_signal(&mut candidates, &chunk, "graph", |s| {
+                        s.graph = 0.8 * self.config.graph_weight;
+                    });
                 }
             }
             for chunk in self.store.find_symbol(&sym.name) {
-                self.merge_hit(
-                    &mut candidates,
-                    &chunk,
-                    SignalScores {
-                        graph: 1.0 * self.config.graph_weight,
-                        ..Default::default()
-                    },
-                    "graph",
-                );
+                self.push_signal(&mut candidates, &chunk, "graph", |s| {
+                    s.graph = 1.0 * self.config.graph_weight;
+                });
             }
         }
 
@@ -277,6 +234,19 @@ impl HybridQueryEngine {
             hits,
             query: query.to_string(),
         }
+    }
+
+    /// Merge a single weighted signal for `chunk` into the candidate map.
+    fn push_signal(
+        &self,
+        candidates: &mut HashMap<String, HybridHit>,
+        chunk: &CodeChunk,
+        source: &str,
+        signal: impl FnOnce(&mut SignalScores),
+    ) {
+        let mut scores = SignalScores::default();
+        signal(&mut scores);
+        self.merge_hit(candidates, chunk, scores, source);
     }
 
     fn merge_hit(

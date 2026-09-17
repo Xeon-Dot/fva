@@ -5,32 +5,10 @@ mod common;
 use std::sync::Arc;
 use tempfile::TempDir;
 
-use common::make_chunks;
+use common::{index_test_chunks, make_chunks, test_store};
 use fva::embedding::{Embedder, LocalEmbedder};
 use fva::error::Result;
-use fva::indexer::chunker::CodeChunk;
-use fva::vector::{LanceDbVectorStore, chunk_texts};
-
-async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<LocalEmbedder>, TempDir) {
-    let embedder = Arc::new(LocalEmbedder::new(256));
-    let dir = TempDir::new().expect("tempdir");
-    let store = Arc::new(
-        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
-            .await
-            .expect("open lancedb store"),
-    );
-    (store, embedder, dir)
-}
-
-async fn index_test_chunks(
-    embedder: &dyn Embedder,
-    store: &LanceDbVectorStore,
-    chunks: &[CodeChunk],
-) -> Result<()> {
-    let texts = chunk_texts(chunks);
-    let vectors = embedder.embed(&texts)?;
-    store.upsert_chunks(chunks, &vectors).await
-}
+use fva::vector::LanceDbVectorStore;
 
 #[tokio::test]
 async fn round_trip_upsert_search_remove() -> Result<()> {

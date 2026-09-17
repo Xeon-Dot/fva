@@ -3,36 +3,24 @@
 
 mod common;
 
-use std::sync::Arc;
-
 use fva::embedding::{Embedder, LocalEmbedder, cosine_similarity};
 use fva::error::Result;
-use fva::indexer::chunker::CodeChunk;
-use fva::vector::{LanceDbVectorStore, chunk_texts};
-use tempfile::TempDir;
+use fva::vector::VectorHit;
 
-use common::make_chunks;
+use common::{index_test_chunks, make_chunks, test_store};
 
-/// Helper to build a test vector store
-async fn test_store() -> (Arc<LanceDbVectorStore>, Arc<dyn Embedder>, TempDir) {
-    let embedder = Arc::new(LocalEmbedder::new(256));
-    let dir = TempDir::new().expect("tempdir");
-    let store = Arc::new(
-        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
-            .await
-            .expect("open lancedb store"),
-    );
-    (store, embedder, dir)
-}
-
-async fn index_test_chunks(
-    embedder: &dyn Embedder,
-    store: &LanceDbVectorStore,
-    chunks: &[CodeChunk],
-) -> Result<()> {
-    let texts = chunk_texts(chunks);
-    let vectors = embedder.embed(&texts)?;
-    store.upsert_chunks(chunks, &vectors).await
+/// Print the ranked results of one search.
+fn print_results(query: &str, results: &[VectorHit]) {
+    println!("\n=== Search: '{}' ===", query);
+    for (i, hit) in results.iter().enumerate() {
+        println!(
+            "  #{:<3} {:.4}  {} ({})",
+            i + 1,
+            hit.score,
+            hit.symbol_name,
+            hit.relative_path
+        );
+    }
 }
 
 #[tokio::test]
@@ -92,16 +80,7 @@ async fn test_search_quality_relevant_results_on_top() -> Result<()> {
 
     assert!(!results.is_empty(), "should find results");
 
-    println!("\n=== Search: '{}' ===", query);
-    for (i, hit) in results.iter().enumerate() {
-        println!(
-            "  #{:<3} {:.4}  {} ({})",
-            i + 1,
-            hit.score,
-            hit.symbol_name,
-            hit.relative_path
-        );
-    }
+    print_results(query, &results);
 
     // The top 3 results should include auth-related functions
     let top_names: Vec<&str> = results
@@ -138,16 +117,7 @@ async fn test_search_rejects_unrelated_code() -> Result<()> {
     let query_vec = embedder.embed_one(query)?;
     let results = store.search(&query_vec, chunks.len()).await?;
 
-    println!("\n=== Search: '{}' ===", query);
-    for (i, hit) in results.iter().enumerate() {
-        println!(
-            "  #{:<3} {:.4}  {} ({})",
-            i + 1,
-            hit.score,
-            hit.symbol_name,
-            hit.relative_path
-        );
-    }
+    print_results(query, &results);
 
     // Sorting functions should appear in top results
     let top5_names: Vec<&str> = results
@@ -171,13 +141,7 @@ async fn test_search_rejects_unrelated_code() -> Result<()> {
 
 #[tokio::test]
 async fn test_parallel_search_performance() -> Result<()> {
-    let embedder = Arc::new(LocalEmbedder::new(256));
-    let dir = TempDir::new().expect("tempdir");
-    let store = Arc::new(
-        LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
-            .await
-            .expect("open lancedb store"),
-    );
+    let (store, embedder, _dir) = test_store().await;
 
     // Index the same set of chunks multiple times to simulate a larger codebase
     let base_chunks = make_chunks();
@@ -281,11 +245,7 @@ async fn test_token_index_properly_built() -> Result<()> {
 
 #[tokio::test]
 async fn test_chunk_by_id_o1() -> Result<()> {
-    let embedder = LocalEmbedder::new(256);
-    let dir = TempDir::new().expect("tempdir");
-    let store = LanceDbVectorStore::open(dir.path().join("vectors"), embedder.dimensions())
-        .await
-        .expect("open lancedb store");
+    let (store, embedder, _dir) = test_store().await;
 
     let chunks = make_chunks();
     let vectors: Vec<Vec<f32>> = chunks
