@@ -71,7 +71,7 @@ impl LanceDbVectorStore {
                     .schema()
                     .await
                     .map_err(|e| FvaError::Other(format!("lancedb schema: {e}")))?;
-                if vector_dims(&tbl_schema) != Some(dimensions) {
+                if vector_dims(tbl_schema.as_ref()) != Some(dimensions) {
                     tracing::warn!(
                         "vector dimensions changed, dropping lancedb table — re-index required"
                     );

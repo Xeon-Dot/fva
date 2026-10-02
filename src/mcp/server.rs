@@ -55,7 +55,7 @@ pub const MCP_INSTRUCTIONS: &str = concat!(
 );
 
 fn empty_result(msg: String) -> CallToolResult {
-    CallToolResult::success(vec![Content::text(msg)])
+    CallToolResult::success(vec![ContentBlock::text(msg)])
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -250,7 +250,7 @@ impl FvaServer {
             lines.push(format!("offset: {next_offset}"));
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))
     }
@@ -289,7 +289,7 @@ impl FvaServer {
             lines.push(format!("\noffset: {}", result.next_file_offset));
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))
     }
@@ -312,7 +312,7 @@ impl FvaServer {
         } else if let Some(query) = &params.query {
             store.search_chunks(query)
         } else {
-            return Ok(CallToolResult::success(vec![Content::text(
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
                 "Provide 'path' or 'query' parameter.".to_string(),
             )]));
         };
@@ -332,7 +332,7 @@ impl FvaServer {
                 result.offset + result.chunks.len()
             ));
         }
-        Ok(CallToolResult::success(vec![Content::text(text)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
     }
 
     #[tool(
@@ -355,7 +355,7 @@ impl FvaServer {
         }
 
         let result = ChunkSearchResult::paginate(chunks, 0, limit);
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             format_chunks_for_agent(&result.chunks, true),
         )]))
     }
@@ -375,7 +375,7 @@ impl FvaServer {
             .query
             .semantic_search(&params.query, limit)
             .await;
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             format_hybrid_result(&result),
         )]))
     }
@@ -396,7 +396,7 @@ impl FvaServer {
             result.hits.retain(|h| h.relative_path.contains(path));
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             format_hybrid_result(&result),
         )]))
     }
@@ -441,7 +441,7 @@ impl FvaServer {
             }
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))
     }
@@ -461,7 +461,7 @@ impl FvaServer {
             .engine
             .context
             .build(&params.query, params.path.as_deref(), &search);
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             ContextBuilder::format_context(&ctx),
         )]))
     }
@@ -503,7 +503,7 @@ impl FvaServer {
             "phase": "4 — Full hybrid intelligence",
         });
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             serde_json::to_string_pretty(&status).unwrap_or_default(),
         )]))
     }
@@ -558,7 +558,7 @@ impl FvaServer {
             format!("tags: {}\n", entry.tags.join(", "))
         };
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "# {}\ntype: {}\n{}sources: {}\ncreated: {}\nupdated: {}\n\n{}",
             entry.title,
             entry.entry_type,
@@ -646,7 +646,7 @@ impl FvaServer {
             lines.push(preview);
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))
     }
@@ -691,7 +691,7 @@ impl FvaServer {
             ));
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             lines.join("\n"),
         )]))
     }
@@ -732,7 +732,7 @@ impl FvaServer {
         out.push_str(
             "\nWrite the summary with wiki_write, then cross-link with [[slug]] references.",
         );
-        Ok(CallToolResult::success(vec![Content::text(out)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(out)]))
     }
 
     #[tool(
@@ -750,7 +750,7 @@ impl FvaServer {
             .wiki
             .query_bundle(&params.query, limit)
             .map_err(|e| ErrorData::internal_error(format!("wiki_query failed: {e}"), None))?;
-        Ok(CallToolResult::success(vec![Content::text(bundle)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(bundle)]))
     }
 
     #[tool(
@@ -767,7 +767,7 @@ impl FvaServer {
             .wiki
             .lint_report(days)
             .map_err(|e| ErrorData::internal_error(format!("wiki_lint failed: {e}"), None))?;
-        Ok(CallToolResult::success(vec![Content::text(report)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(report)]))
     }
 }
 
@@ -794,8 +794,8 @@ fn format_hybrid_result(result: &crate::query::HybridSearchResult) -> String {
 
 #[tool_handler]
 impl ServerHandler for FvaServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(MCP_INSTRUCTIONS)
     }
 }

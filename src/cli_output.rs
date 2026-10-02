@@ -39,7 +39,7 @@ pub fn status(
 ) {
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
+        .load_style(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
             Cell::new("Component").fg(Color::Cyan),
@@ -151,7 +151,7 @@ pub fn wiki_list(entries: &[WikiEntry]) {
 
     let mut table = Table::new();
     table
-        .load_preset(UTF8_FULL)
+        .load_style(UTF8_FULL)
         .set_content_arrangement(ContentArrangement::Dynamic)
         .set_header(vec![
             Cell::new("Slug").fg(Color::Cyan),
