@@ -9,14 +9,7 @@
     "repositoryName": null,
     "createdAt": "2026-10-02T08:19:23.646Z",
     "updatedAt": "2026-10-02T08:19:23.646Z",
-    "languages": [
-      "JSON",
-      "Markdown",
-      "Powershell",
-      "Rust",
-      "Shell",
-      "YAML"
-    ]
+    "languages": ["JSON", "Markdown", "Powershell", "Rust", "Shell", "YAML"]
   },
   "tools": [
     {
